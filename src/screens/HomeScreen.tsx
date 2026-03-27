@@ -1,0 +1,241 @@
+import { useNavigate } from "react-router-dom";
+import { useActiveTrip, useDreamTrips, useDestinations } from "../hooks/useTrips";
+import { useExpenses, useBudget } from "../hooks/useExpenses";
+import { useAllCalendarEvents } from "../hooks/useCalendarEvents";
+import { useLocationStore } from "../stores/locationStore";
+import { Card } from "../components/ui/Card";
+import { Buddy } from "../components/Buddy";
+import { Button } from "../components/ui/Button";
+import { LeafletMap } from "../components/map/LeafletMap";
+
+export function HomeScreen() {
+  const navigate = useNavigate();
+  const trip = useActiveTrip();
+  const expenses = useExpenses(trip?.id);
+  const budget = useBudget(trip?.id);
+  const events = useAllCalendarEvents();
+  const dreams = useDreamTrips();
+  const destinations = useDestinations(trip?.id);
+  const { lat, lng, nearbyPOIs } = useLocationStore();
+
+  const totalSpent = expenses.reduce((s, e) => s + e.convertedAmount, 0);
+  const todayEvents = events.filter((e) => {
+    const d = new Date(e.startTime).toDateString();
+    return d === new Date().toDateString();
+  });
+
+  const daysIn = trip
+    ? Math.max(1, Math.ceil((Date.now() - new Date(trip.startDate).getTime()) / 86400000))
+    : 0;
+  const totalDays = trip
+    ? Math.ceil((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / 86400000)
+    : 0;
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-5">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+              <path d="M2 12h20" />
+            </svg>
+          </div>
+          <span className="text-primary font-semibold text-sm">OmniTrip</span>
+        </div>
+        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold">
+          S
+        </div>
+      </div>
+
+      {/* Ongoing Journey */}
+      {trip && (
+        <div className="px-5">
+          <div
+            className="relative rounded-2xl overflow-hidden h-48 cursor-pointer"
+            onClick={() => navigate("/budget")}
+          >
+            <img
+              src={trip.coverImage}
+              alt={trip.title}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-4">
+              <span className="text-[10px] uppercase tracking-wider text-white/70 font-medium">
+                Ongoing Journey
+              </span>
+              <h2 className="text-xl font-bold text-white font-serif mt-0.5">
+                {trip.title}
+              </h2>
+              <div className="flex items-center gap-4 mt-2 text-xs text-white/80">
+                <span>Journey Progress</span>
+                <span>Day {daysIn} of {totalDays}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Destinations */}
+      {destinations.length > 0 && (
+        <div className="px-5">
+          <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Destinations</h3>
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-5 px-5 pb-1">
+            {destinations.map((dest: any) => (
+              <button
+                key={dest.id}
+                type="button"
+                onClick={() => navigate(`/destination/${dest.id}`)}
+                className="flex-shrink-0 w-36 rounded-2xl overflow-hidden bg-surface border border-cream-dark text-left"
+              >
+                {dest.coverImage && (
+                  <img src={dest.coverImage} alt={dest.name} className="w-full h-20 object-cover" />
+                )}
+                <div className="p-2.5">
+                  <p className="text-xs font-semibold">{dest.name}</p>
+                  <p className="text-[10px] text-text-muted">{dest.country}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Plan Next Move */}
+      <div className="px-5">
+        <Card className="flex items-start gap-3" onClick={() => navigate("/plan")}>
+          <div className="w-10 h-10 rounded-full bg-cream-dark flex items-center justify-center shrink-0 mt-0.5">
+            <Buddy state="idle" size="mini" mode="video" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm text-text">Plan Next Move</h3>
+            <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
+              Let our concierge find the perfect hidden gem for your tonight's dinner.
+            </p>
+            <button className="text-xs text-primary font-medium mt-2 flex items-center gap-1">
+              Explore Map <span aria-hidden>→</span>
+            </button>
+          </div>
+        </Card>
+      </div>
+
+      {/* Calendar + Budget widgets */}
+      <div className="px-5 space-y-3">
+        <Card
+          className="flex items-center gap-3 !py-3"
+          onClick={() => navigate("/calendar")}
+        >
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2D6A5A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-text">Calendar</p>
+            <p className="text-xs text-text-secondary">{todayEvents.length} Events Today</p>
+          </div>
+        </Card>
+
+        <Card
+          className="flex items-center gap-3 !py-3"
+          onClick={() => navigate("/budget")}
+        >
+          <div className="w-9 h-9 rounded-xl bg-accent/10 flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E8A87C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-text">Budget Tracker</p>
+            <p className="text-xs text-text-secondary">
+              {budget
+                ? `$${totalSpent.toLocaleString()} of $${budget.totalPlanned.amount.toLocaleString()}`
+                : "Sarah, you're on track"}
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* Nearby Map */}
+      {lat && lng && (
+        <div className="px-5">
+          <Card className="!p-0 overflow-hidden">
+            <LeafletMap
+              center={[lat, lng]}
+              zoom={15}
+              userLocation={{ lat, lng }}
+              markers={nearbyPOIs
+                .filter((p) => p.lat && p.lng)
+                .map((p) => ({
+                  id: p.id,
+                  lat: p.lat!,
+                  lng: p.lng!,
+                  name: p.name,
+                  category: p.category,
+                }))}
+              height="180px"
+            />
+            <div className="px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">Explore Nearby</p>
+              <p className="text-xs text-text-secondary">{nearbyPOIs.length} places discovered near you</p>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Buddy Reflection */}
+      <div className="px-5">
+        <Card className="!p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-full overflow-hidden">
+              <Buddy state="idle" size="mini" mode="video" />
+            </div>
+            <h3 className="font-semibold text-sm">Buddy Reflection</h3>
+          </div>
+          <p className="text-xs text-text-secondary italic leading-relaxed">
+            "Sarah, I noticed you spent quite a bit on those artisanal ceramics today.
+            They are beautiful, but perhaps we should pivot to local street food for dinner
+            to balance the aesthetic experience with our mindful budget?"
+          </p>
+          <div className="flex gap-2 mt-4">
+            <Button className="!text-xs !px-4 !py-2">Accept Suggestion</Button>
+            <Button variant="ghost" className="!text-xs !px-4 !py-2">Tell me more</Button>
+          </div>
+        </Card>
+      </div>
+
+      {/* Upcoming Dreams */}
+      <div className="px-5">
+        <div className="flex items-end justify-between mb-3">
+          <div>
+            <h2 className="text-xl font-bold font-serif">Upcoming Dreams</h2>
+            <p className="text-xs text-text-secondary mt-0.5">
+              The journeys that live in your heart
+            </p>
+          </div>
+          <div className="flex gap-1">
+            <span className="text-xs font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">Bucket</span>
+            <span className="text-xs font-medium text-text-muted px-3 py-1">List</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-4 overflow-x-auto px-5 pb-2 scrollbar-hide">
+        {dreams.map((dream) => (
+          <div key={dream.id} className="min-w-[260px] rounded-2xl overflow-hidden bg-surface shadow-sm border border-cream-dark">
+            {dream.coverImage && (
+              <img src={dream.coverImage} alt={dream.title} className="w-full h-36 object-cover" />
+            )}
+            <div className="p-4">
+              <h3 className="font-semibold text-sm">{dream.title}</h3>
+              <p className="text-xs text-text-secondary mt-1 line-clamp-2">{dream.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
