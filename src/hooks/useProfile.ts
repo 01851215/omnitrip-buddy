@@ -30,7 +30,7 @@ export interface TravelProfile {
 function rowToProfile(row: Record<string, unknown>): Profile {
   return {
     id: row.id as string,
-    email: row.email as string,
+    email: (row.email as string) ?? "",
     displayName: (row.display_name as string) ?? "",
     username: (row.username as string) ?? "",
     buddyName: (row.buddy_name as string) ?? "",
@@ -42,15 +42,27 @@ function rowToProfile(row: Record<string, unknown>): Profile {
 }
 
 function rowToTravelProfile(row: Record<string, unknown>): TravelProfile {
+  // budget_style is jsonb in DB — extract string value
+  const rawBudget = row.budget_style;
+  const budgetStyle =
+    typeof rawBudget === "string"
+      ? rawBudget
+      : rawBudget && typeof rawBudget === "object" && "value" in (rawBudget as Record<string, unknown>)
+      ? String((rawBudget as Record<string, unknown>).value)
+      : "moderate";
+
+  // notification_settings is jsonb
+  const rawNotif = (row.notification_settings as Record<string, unknown>) ?? {};
+
   return {
     userId: row.user_id as string,
     pacePreference: (row.pace_preference as number) ?? 3,
-    budgetStyle: (row.budget_style as string) ?? "moderate",
+    budgetStyle,
     activityPreferences: (row.activity_preferences as string[]) ?? [],
     timeOfDayPattern: (row.time_of_day_pattern as string) ?? "",
     cuisinePreferences: (row.cuisine_preferences as string[]) ?? [],
     avoidances: (row.avoidances as string[]) ?? [],
-    notificationSettings: (row.notification_settings as Record<string, unknown>) ?? {},
+    notificationSettings: rawNotif,
     buddySettings: (row.buddy_settings as Record<string, unknown>) ?? {},
     lastUpdated: (row.last_updated as string) ?? "",
   };
@@ -93,7 +105,9 @@ export function useProfile() {
     }
 
     fetchData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const updateProfile = useCallback(
@@ -111,9 +125,22 @@ export function useProfile() {
       if (fields.bio !== undefined) dbFields.bio = fields.bio;
       if (fields.avatarUrl !== undefined) dbFields.avatar_url = fields.avatarUrl;
 
-      await supabase
+      if (Object.keys(dbFields).length === 0) return;
+
+      dbFields.updated_at = new Date().toISOString();
+
+      // Use update (row already exists from seeding/signup)
+      const { error } = await supabase
         .from("profiles")
-        .upsert({ id: user.id, ...dbFields }, { onConflict: "id" });
+        .update(dbFields)
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Failed to update profile:", error);
+        // Revert optimistic update by refetching
+        const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+        if (data) setProfile(rowToProfile(data));
+      }
     },
     [user],
   );
@@ -123,25 +150,42 @@ export function useProfile() {
       if (!user) return;
 
       // Optimistic update
-      setTravelProfile((prev) =>
-        prev ? { ...prev, ...fields } : prev,
-      );
+      setTravelProfile((prev) => (prev ? { ...prev, ...fields } : prev));
 
       const dbFields: Record<string, unknown> = {};
       if (fields.pacePreference !== undefined) dbFields.pace_preference = fields.pacePreference;
-      if (fields.budgetStyle !== undefined) dbFields.budget_style = fields.budgetStyle;
-      if (fields.activityPreferences !== undefined) dbFields.activity_preferences = fields.activityPreferences;
+      // budget_style column is jsonb — wrap string in JSON
+      if (fields.budgetStyle !== undefined) dbFields.budget_style = JSON.stringify(fields.budgetStyle);
+      if (fields.activityPreferences !== undefined) dbFields.activity_preferences = JSON.stringify(fields.activityPreferences);
       if (fields.timeOfDayPattern !== undefined) dbFields.time_of_day_pattern = fields.timeOfDayPattern;
       if (fields.cuisinePreferences !== undefined) dbFields.cuisine_preferences = fields.cuisinePreferences;
       if (fields.avoidances !== undefined) dbFields.avoidances = fields.avoidances;
       if (fields.notificationSettings !== undefined) dbFields.notification_settings = fields.notificationSettings;
       if (fields.buddySettings !== undefined) dbFields.buddy_settings = fields.buddySettings;
 
+      if (Object.keys(dbFields).length === 0) return;
+
       dbFields.last_updated = new Date().toISOString();
 
-      await supabase
+      // Try update first, fall back to upsert if row doesn't exist yet
+      const { error } = await supabase
         .from("travel_profiles")
-        .upsert({ user_id: user.id, ...dbFields }, { onConflict: "user_id" });
+        .update(dbFields)
+        .eq("user_id", user.id);
+
+      if (error) {
+        // Row might not exist — try upsert
+        const { error: upsertErr } = await supabase
+          .from("travel_profiles")
+          .upsert({ user_id: user.id, ...dbFields }, { onConflict: "user_id" });
+
+        if (upsertErr) {
+          console.error("Failed to update travel profile:", upsertErr);
+          // Revert
+          const { data } = await supabase.from("travel_profiles").select("*").eq("user_id", user.id).single();
+          if (data) setTravelProfile(rowToTravelProfile(data));
+        }
+      }
     },
     [user],
   );
