@@ -11,9 +11,9 @@ AI-powered travel companion app. Plan trips, explore destinations with a day-by-
 | State | Zustand (buddyStore, locationStore, tripStore, etc.) |
 | Backend | Supabase (PostgreSQL + Auth + RLS + Storage) |
 | AI Chat | OpenAI ChatGPT API (with demo fallback) |
-| AI Planning | Claude API for trip suggestions (with demo fallback) |
+| AI Planning | ChatGPT API for trip suggestions (with demo fallback) |
 | Maps | Leaflet.js |
-| Charts | Recharts |
+| Charts | Custom SVG (VibeChart, CategoryBreakdown) |
 | Voice | Web Speech API (STT) + ElevenLabs / browser TTS |
 | POI | Foursquare Places API (with demo fallback) |
 
@@ -27,6 +27,7 @@ src/
 │   ├── BuddyPanel/     # Chat panel (ChatFeed, POIFeed, QuickActions, PanelInput)
 │   ├── BottomNav/      # 5-tab bottom navigation
 │   ├── itinerary/      # ActivityCard, DaySection, AddActivitySheet
+│   ├── insights/       # VibeChart (radial SVG), CategoryBreakdown (bar chart)
 │   ├── profile/        # TagInput, SliderField
 │   └── ui/             # Button, Card, shared components
 ├── screens/
@@ -39,11 +40,12 @@ src/
 │   ├── FootprintsScreen.tsx   # Past trips, journal, behavioral insights
 │   └── ProfileScreen.tsx      # Editable profile, travel prefs, buddy settings
 ├── hooks/              # useAuth, useActiveTrip, useExpenses, useItinerary, useProfile, etc.
-├── services/           # supabase, chatgpt, claude, speech, tts, location, poi, proactiveAlerts
+├── services/           # supabase, chatgpt, travelInsights, speech, tts, location, poi, proactiveAlerts
 ├── stores/             # Zustand stores (buddy, location, trip, user, voice, buddyPanel)
 ├── data/               # templates.ts (curated destination templates)
 ├── layouts/            # AppLayout (main shell with nav + buddy + alerts)
 ├── utils/              # mapRow.ts (snake_case <-> camelCase)
+├── types/              # TypeScript interfaces (Trip, Expense, JournalEntry, etc.) + Supabase row types
 └── db/                 # Legacy Dexie (deprecated, replaced by Supabase)
 ```
 
@@ -235,6 +237,128 @@ User requested 4 upgrades after reviewing the app, plus additional planning enha
 
 ---
 
+### Session 4 — Codebase Audit & Bug Fixes (COMPLETE)
+
+Full codebase audit against 30+ reported concerns. Validated each against the actual source and categorized as blocking, should-fix, or nice-to-have.
+
+**Findings & fixes:**
+
+1. **App.tsx demo leftover** — Not an issue; `App.tsx` was already deleted. Entry is `main.tsx` with proper routing.
+2. **Claude API removal** — `claude.ts` was already deleted. Removed the lingering `VITE_CLAUDE_API_KEY` env type declaration from `vite-env.d.ts`.
+3. **ElevenLabs TTS** — Already fully implemented in `src/services/tts.ts` with graceful fallback to Web Speech API when no API key is set.
+4. **Foursquare POI** — Already fully implemented in `src/services/poi.ts` with demo fallback returning hardcoded Bali POIs.
+5. **Type safety gaps** — Concentrated in `mapRow.ts` (8 `any` mappers), `useItinerary.ts`, and `speech.ts`. Documented for future Supabase type generation.
+6. **Trip lifecycle gap** — `completeTrip()` existed but was never called from UI. `updateTripStatus` was wired to HomeScreen's "Mark Journey Complete" button. Planning created trips as `active` directly.
+7. **Currency conversion** — Was a no-op (`converted_amount = amount`). Implemented `src/utils/currency.ts` with static exchange rates for 10 currencies (USD, EUR, GBP, JPY, etc.) and wired it into BudgetScreen's Quick Log.
+8. **Journal entry creation** — Was display-only. Added `createJournalEntry` to `useFootprints.ts` and a FAB + modal to FootprintsScreen.
+9. **Spinner/EmptyState** — Components existed but were never imported. Wired `EmptyState` into HomeScreen (no active trip) and FootprintsScreen (no journal entries).
+10. **Test infrastructure** — Set up Vitest + React Testing Library with a basic smoke test for the Button component.
+
+---
+
+### Session 5 — End-to-End Smoke Testing (COMPLETE)
+
+Ran a full E2E smoke test across all screens using Playwright browser automation, verifying both UI interactions and Supabase data persistence after each mutation.
+
+**Test results (all passed):**
+
+| Test | What was verified | Supabase confirmed |
+|------|-------------------|---------------------|
+| Auth Signup | Created test account, seed data populated | profiles, trips, destinations, expenses, journal_entries, travel_profiles all created |
+| Home — Complete Trip | Trip card displayed, "Mark Journey Complete" worked, empty state appeared | Trip status changed to `completed` |
+| Planning — Create Trip | Submitted "3 days in Lisbon", received AI itinerary, clicked "Add This Trip" | New trip inserted with destination "Lisbon" |
+| Calendar — Conflicts | Navigated to conflict date, tested Ignore button | Conflict dismissed in UI |
+| Budget — Quick Log | Logged ¥2500 JPY ramen expense | Expense saved with `converted_amount` ~16.67 USD |
+| Footprints — Journal | Created journal entry for "Lisbon, Portugal" | Entry persisted with correct location, text, date |
+| Profile — Alert Frequency | Moved slider from Frequent (5) to Normal (3) | `notification_settings.alertFrequency` updated 5 → 3 |
+
+**Bugs found and fixed during testing:**
+- Missing RLS policy: `profiles` table lacked an INSERT policy for new users. Added `CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (id = auth.uid())`.
+- `useActiveTrip` used `.single()` which threw 406 when no active trip existed. Changed to `.maybeSingle()`.
+
+---
+
+### Session 6 — Five Critical Issues (COMPLETE)
+
+Addressed five user-reported issues across the app:
+
+#### 1. Buddy Reflection buttons wired
+
+The "Accept Suggestion" and "Tell me more" buttons on HomeScreen were placeholder-only with no handlers.
+
+- **Accept Suggestion**: Dismisses the reflection card, sets Buddy to excited mood, speaks a confirmation via TTS.
+- **Tell me more**: Opens the BuddyPanel chat and injects the reflection as context for a ChatGPT follow-up.
+- **Dynamic content**: Reflection text is now generated via ChatGPT based on the user's actual budget data, with a template fallback.
+
+#### 2. Connected Path — LLM vibe analysis, journey map, charts
+
+Replaced the static placeholder "Connected Path" and hardcoded "Behavioural Insights" on the Journeys screen with three dynamic features:
+
+- **Journey Map**: Interactive Leaflet map with dashed polylines connecting all visited destinations chronologically. Uses a new `useAllDestinations()` hook that joins `destinations` with `trips` by `user_id`. `LeafletMap` gained `polyline` and `fitBounds` props.
+- **Travel Vibe Analysis**: New `src/services/travelInsights.ts` calls ChatGPT with the user's full travel history (via `useUserHistory`) and returns a structured personality analysis: archetype label (e.g. "The Mindful Wanderer"), trait scores, evolution narrative, and activity category breakdown. Falls back to a computed analysis from raw data when no API key is set.
+- **Visualizations**: `VibeChart.tsx` renders a radial/spider SVG chart for 5 trait dimensions (Cultural Depth, Adventure, Food Explorer, Pace, Budget Savvy). `CategoryBreakdown.tsx` renders animated horizontal bar charts for activity type distribution. No external charting library needed.
+- **Stats bar**: Now shows real destination count and country count instead of the `allTrips.length * 4` approximation.
+
+#### 3. Intensity labels clarified
+
+Updated `INTENSITY_OPTIONS` sub-text from "2-3 activities" / "3-4 activities" / "5-6 activities" to "2-3 per day" / "3-4 per day" / "5-6 per day" to match the actual AI prompt behavior.
+
+#### 4. Profile auto-save to Supabase
+
+All profile sections now auto-save without requiring a Save button:
+
+- **Basic Info** (name, age, bio): Always-editable fields with 800ms debounced save to `profiles` table.
+- **Buddy Settings** (name, tone): Buddy name auto-saves with debounce; tone buttons save immediately to `travel_profiles.buddy_settings`.
+- **Quiet Mode**: Now persists to `travel_profiles.notification_settings.quietMode` and restores on load, so the setting survives page refreshes and is available to the LLM.
+
+#### 5. Active journey now shows on Home
+
+- `useActiveTrip` now queries for both `active` and `planning` status trips (preferring `active`), so planned trips appear on the Home dashboard instead of showing the "No active journey" empty state.
+- A "Start Trip" button appears for planning-status trips, transitioning them to active.
+- Added `visibilitychange` listener and `location.key` effect so the trip refreshes automatically when navigating back to Home.
+
+---
+
+### Session 7 — Profile Bug Fixes, Password Reset & GitHub Setup (COMPLETE)
+
+Full audit of all reported profile issues. Root causes identified via live preview testing + Supabase DB inspection. All 6 bugs fixed plus GitHub repo created.
+
+**Root causes found:**
+
+| Bug | Root Cause |
+|-----|------------|
+| Profile pics not saving | Storage INSERT policy missing `WITH CHECK` — uploads to wrong paths were rejected |
+| Basic info not saving | 2 of 4 users had **no `profiles` row** — `UPDATE` silently no-ops on missing rows |
+| Travel preferences not saving | Seed data inserted `budget_style` as a complex object `{stays:0.4,...}` and `pace_preference: 0.35` — incompatible with slider UI; update failed silently |
+| Alert frequency not saving | Same missing-row issue as basic info |
+| Buddy settings not saving | Same missing-row issue — all `profiles` updates were lost |
+| Password reset broken | App sent the reset email correctly but had no handler for the recovery redirect — token was lost when the app bounced to onboarding |
+
+**Fixes shipped:**
+
+1. **DB migration** — Created `handle_new_user()` trigger that auto-inserts a `profiles` row on every new signup. Backfilled the 2 users who had no row. Tightened the Storage INSERT policy to enforce `(storage.foldername(name))[1] = auth.uid()`.
+
+2. **`updateProfile` → upsert** (`src/hooks/useProfile.ts`) — Switched from `.update()` (silent no-op on missing row) to `.upsert({ onConflict: "id" })` so saves are safe regardless of DB state.
+
+3. **Seed data fixed** (`src/services/seedSupabase.ts`) — `pace_preference: 0.35` → `3`, `budget_style: {object}` → `"moderate"`, `activity_preferences: {object}` → `["nature","culture","food","adventure"]`. Final profile write changed from `.update()` to `.upsert()`.
+
+4. **Password reset flow** — `AuthProvider` now detects `#type=recovery` hash on mount, calls `supabase.auth.setSession()` with the token, then navigates to `/reset-password`. New `ResetPasswordScreen` shows a set-new-password form, calls `supabase.auth.updateUser({ password })`, and redirects to `/home` on success.
+
+5. **Email service** — Configured Supabase custom SMTP to use **Resend** (`smtp.resend.com:465`). Auth emails (password reset, signup confirmation) now sent via Resend instead of Supabase's shared sender.
+
+6. **GitHub repo** — Created public repo at `https://github.com/01851215/omnitrip-buddy` and pushed all sessions.
+
+**Files changed:**
+- `src/hooks/useProfile.ts` — upsert in `updateProfile`
+- `src/services/seedSupabase.ts` — fixed seed data format + upsert profile
+- `src/components/auth/AuthProvider.tsx` — recovery hash detection + navigate
+- `src/screens/ResetPasswordScreen.tsx` — new screen (set new password form)
+- `src/routes.tsx` — added public `/reset-password` route
+- Supabase DB — `handle_new_user` trigger, backfill, storage policy
+- Supabase Auth — custom SMTP via Resend
+
+---
+
 ## Key Design Decisions
 
 - **snake_case ↔ camelCase**: DB uses Postgres convention, frontend uses JS convention. `mapRow.ts` handles conversion.
@@ -242,7 +366,10 @@ User requested 4 upgrades after reviewing the app, plus additional planning enha
 - **Safe area insets**: `viewport-fit=cover` + `env(safe-area-inset-bottom)` for mobile browser chrome.
 - **Optimistic UI**: Profile and activity updates apply locally first, then persist to Supabase.
 - **Auto-confirm auth**: Supabase trigger auto-confirms new users for demo/testing flow.
+- **Auto-save with debounce**: Profile fields use an 800ms debounce before persisting to Supabase, preventing excessive writes.
+- **Custom SVG charts over libraries**: VibeChart and CategoryBreakdown are implemented as inline SVG/JSX to avoid adding Recharts or similar dependencies for a small number of visualizations.
+- **LLM with computed fallbacks**: All AI-powered features (Buddy reflections, travel vibe analysis, trip planning) have client-side fallbacks that produce reasonable output from raw data when API keys are missing.
 
 ## Version
 
-`v0.3.0 — Advanced Features Build`
+`v0.7.0 — Profile Fixes, Password Reset & Email Service`
