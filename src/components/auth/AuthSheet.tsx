@@ -5,6 +5,20 @@ import { Button } from "../ui/Button";
 import { seedSupabaseData } from "../../services/seedSupabase";
 import { supabase } from "../../services/supabase";
 
+async function sendWelcomeEmail(email: string, displayName: string) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    await supabase.functions.invoke("send-welcome-email", {
+      body: { email, displayName },
+      headers: session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {},
+    });
+  } catch {
+    // Non-critical — don't surface welcome email failures to the user
+  }
+}
+
 type AuthMode = "login" | "signup" | "reset";
 
 interface AuthSheetProps {
@@ -55,6 +69,8 @@ export function AuthSheet({ initialMode, onClose }: AuthSheetProps) {
         }
         // After signup, sign in to get a session
         await signIn(email, password);
+        // Send welcome email via Edge Function (non-blocking — don't await)
+        sendWelcomeEmail(email, displayName);
       } else {
         await signIn(email, password);
       }
