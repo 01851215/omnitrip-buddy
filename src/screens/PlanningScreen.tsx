@@ -45,6 +45,7 @@ export function PlanningScreen() {
   const [result, setResult] = useState<TripSuggestionResult | null>(null);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
   const [createdTrips, setCreatedTrips] = useState<Record<string, string>>({});
+  const [tripStartDates, setTripStartDates] = useState<Record<string, string>>({});
   const [routeDeals, setRouteDeals] = useState<Record<string, LiveDealResult>>({});
   const [routeDealsLive, setRouteDealsLive] = useState<Record<string, boolean>>({});
   const [dealsLoading, setDealsLoading] = useState<Record<string, boolean>>({});
@@ -280,7 +281,8 @@ export function PlanningScreen() {
         });
 
         if (activityRows.length > 0) {
-          await supabase.from("activities").insert(activityRows);
+          const { error: actErr } = await supabase.from("activities").insert(activityRows);
+          if (actErr) console.error("Failed to insert activities:", actErr);
 
           // Sync activities to calendar_events so they appear on CalendarScreen
           const calendarRows = activityRows.map((a) => ({
@@ -294,14 +296,16 @@ export function PlanningScreen() {
             type: "travel" as const,
             conflicts_with: [],
           }));
-          await supabase.from("calendar_events").insert(calendarRows);
+          const { error: calErr } = await supabase.from("calendar_events").insert(calendarRows);
+          if (calErr) console.error("Failed to insert calendar events:", calErr);
         }
 
         dayOffset += dest.days;
       }
 
-      // Store created trip ID and generate deals instead of navigating away
+      // Store created trip ID + start date, and generate deals instead of navigating away
       setCreatedTrips((prev) => ({ ...prev, [route.id]: tripId }));
+      setTripStartDates((prev) => ({ ...prev, [route.id]: tripStart.toISOString().split("T")[0] }));
 
       // Fetch live deals from Edge Function (falls back to static)
       const destInputs = destinations.map((dest, i) => {
@@ -522,10 +526,10 @@ export function PlanningScreen() {
               </div>
             </div>
 
-            {/* Intensity */}
+            {/* Activities Per Day */}
             <div>
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
-                Intensity
+                Activities Per Day
               </p>
               <div className="flex gap-2">
                 {INTENSITY_OPTIONS.map((opt) => (
@@ -722,7 +726,7 @@ export function PlanningScreen() {
                         {createdTrips[route.id] ? (
                           <Button
                             className="!text-xs !px-4 !py-2 !bg-success"
-                            onClick={() => navigate("/calendar")}
+                            onClick={() => navigate("/calendar", { state: { focusDate: tripStartDates[route.id] } })}
                           >
                             📅 Go to Calendar
                           </Button>

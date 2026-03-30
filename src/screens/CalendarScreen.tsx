@@ -40,11 +40,30 @@ export function CalendarScreen() {
 
   // Refresh calendar data when navigating to this screen
   useEffect(() => { refreshEvents(); }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
-  const [monthYear, setMonthYear] = useState(() => ({
-    year: new Date().getFullYear(),
-    month: new Date().getMonth(),
-  }));
+
+  // If navigating from PlanningScreen with a focusDate, use it as the initial date
+  const focusDate = (location.state as { focusDate?: string } | null)?.focusDate;
+
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (focusDate) return focusDate;
+    return toISODate(new Date());
+  });
+  const [monthYear, setMonthYear] = useState(() => {
+    if (focusDate) {
+      const d = new Date(focusDate + "T00:00:00");
+      return { year: d.getFullYear(), month: d.getMonth() };
+    }
+    return { year: new Date().getFullYear(), month: new Date().getMonth() };
+  });
+
+  // When arriving with a focusDate, jump to that date and switch to timeline
+  useEffect(() => {
+    if (!focusDate) return;
+    setSelectedDate(focusDate);
+    const d = new Date(focusDate + "T00:00:00");
+    setMonthYear({ year: d.getFullYear(), month: d.getMonth() });
+    setViewMode("timeline");
+  }, [focusDate]);
   const [dismissedConflicts, setDismissedConflicts] = useState<Set<string>>(new Set());
   const [movingEvent, setMovingEvent] = useState<string | null>(null);
   const [addingBuffer, setAddingBuffer] = useState(false);
@@ -300,8 +319,8 @@ export function CalendarScreen() {
                 <div className="flex items-center gap-3">
                   <div className={`w-1 h-8 rounded-full ${intensityLabel === "High" ? "bg-conflict" : intensityLabel === "Medium" ? "bg-accent" : "bg-success"}`} />
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">Travel Intensity</p>
-                    <p className="text-sm font-medium">{intensityLabel} ({dateEvents.length} Events)</p>
+                    <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">Activity Density</p>
+                    <p className="text-sm font-medium">{intensityLabel} ({dateEvents.length} {dateEvents.length === 1 ? "Activity" : "Activities"})</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

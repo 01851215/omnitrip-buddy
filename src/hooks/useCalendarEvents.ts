@@ -27,8 +27,18 @@ export function useAllCalendarEvents() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("calendar_events").select("*").eq("user_id", user.id)
-      .then(({ data }) => setEvents((data ?? []).map(mapCalendarEvent as any)));
+    supabase
+      .from("calendar_events")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("start_time", { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Failed to load calendar events:", error);
+          return;
+        }
+        setEvents((data ?? []).map(mapCalendarEvent as any));
+      });
   }, [user, version]);
 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
