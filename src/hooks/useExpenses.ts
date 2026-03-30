@@ -1,27 +1,27 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../services/supabase";
 import { mapExpense, mapBudget } from "../utils/mapRow";
-import type { ExpenseCategory } from "../types";
+import type { Expense, Budget, ExpenseCategory } from "../types";
 
 export function useExpenses(tripId?: string) {
-  const [expenses, setExpenses] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   useEffect(() => {
     if (!tripId) { setExpenses([]); return; }
     supabase.from("expenses").select("*").eq("trip_id", tripId).order("timestamp", { ascending: true })
-      .then(({ data }) => setExpenses((data ?? []).map(mapExpense)));
+      .then(({ data }) => setExpenses((data ?? []).map(mapExpense as any)));
   }, [tripId]);
 
   return expenses;
 }
 
 export function useBudget(tripId?: string) {
-  const [budget, setBudget] = useState<any>(undefined);
+  const [budget, setBudget] = useState<Budget | undefined>(undefined);
 
   useEffect(() => {
     if (!tripId) { setBudget(undefined); return; }
     supabase.from("budgets").select("*").eq("trip_id", tripId).single()
-      .then(({ data }) => setBudget(data ? mapBudget(data) : undefined));
+      .then(({ data }) => setBudget(data ? mapBudget(data as any) : undefined));
   }, [tripId]);
 
   return budget;

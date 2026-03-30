@@ -12,9 +12,12 @@ import {
   type RouteSuggestion,
   type TripSuggestionResult,
   type PlanningConstraints,
-} from "../services/claude";
+} from "../services/tripAI";
 import { LeafletMap, type MapMarker } from "../components/map/LeafletMap";
 import { useUserHistory, historyToPromptContext } from "../hooks/useUserHistory";
+import { searchDeals, type LiveDealResult } from "../services/searchApi";
+import { DealsPanel } from "../components/booking/DealsPanel";
+import { useBookings } from "../hooks/useBookings";
 
 const suggestedPrompts = [
   "A quiet weekend in the Swiss Alps",
@@ -31,9 +34,9 @@ const BUDGET_PRESETS = [
 ] as const;
 
 const INTENSITY_OPTIONS = [
-  { label: "Relaxed", value: "relaxed" as const, sub: "2-3 activities" },
-  { label: "Balanced", value: "balanced" as const, sub: "3-4 activities" },
-  { label: "Packed", value: "packed" as const, sub: "5-6 activities" },
+  { label: "Relaxed", value: "relaxed" as const, sub: "2-3 per day" },
+  { label: "Balanced", value: "balanced" as const, sub: "3-4 per day" },
+  { label: "Packed", value: "packed" as const, sub: "5-6 per day" },
 ] as const;
 
 export function PlanningScreen() {
@@ -41,11 +44,18 @@ export function PlanningScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TripSuggestionResult | null>(null);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
+  const [createdTrips, setCreatedTrips] = useState<Record<string, string>>({});
+  const [routeDeals, setRouteDeals] = useState<Record<string, LiveDealResult>>({});
+  const [routeDealsLive, setRouteDealsLive] = useState<Record<string, boolean>>({});
+  const [dealsLoading, setDealsLoading] = useState<Record<string, boolean>>({});
   const { setMood } = useBuddyStore();
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const { history } = useUserHistory();
   const constraintsRef = useRef<PlanningConstraints>({});
+  // Track the first created trip for booking subscription
+  const activeTripId = Object.values(createdTrips)[0];
+  const { bookings } = useBookings(activeTripId);
 
   // Constraint state
   const [budgetStyle, setBudgetStyle] = useState<string | null>(null);
@@ -167,13 +177,13 @@ export function PlanningScreen() {
       const tripEnd = new Date(tripStart);
       tripEnd.setDate(tripEnd.getDate() + tripDuration);
 
-      // 1. Create trip
+      // 1. Create trip (active immediately so it shows on Home)
       const { data: trip } = await supabase
         .from("trips")
         .insert({
           user_id: user.id,
           title: tripTitle,
-          status: "planning" as const,
+          status: "active" as const,
           start_date: tripStart.toISOString().split("T")[0],
           end_date: tripEnd.toISOString().split("T")[0],
           cover_image: tripCoverImage,
@@ -271,17 +281,50 @@ export function PlanningScreen() {
 
         if (activityRows.length > 0) {
           await supabase.from("activities").insert(activityRows);
+
+          // Sync activities to calendar_events so they appear on CalendarScreen
+          const calendarRows = activityRows.map((a) => ({
+            user_id: user.id,
+            trip_id: tripId,
+            source: "omnitrip" as const,
+            title: a.title,
+            description: `${a.type} in ${dest.name}`,
+            start_time: a.start_time,
+            end_time: a.end_time,
+            type: "travel" as const,
+            conflicts_with: [],
+          }));
+          await supabase.from("calendar_events").insert(calendarRows);
         }
 
         dayOffset += dest.days;
       }
 
-      // Navigate to first destination
-      if (firstDestinationId) {
-        navigate(`/destination/${firstDestinationId}`);
-      } else {
-        navigate("/home");
-      }
+      // Store created trip ID and generate deals instead of navigating away
+      setCreatedTrips((prev) => ({ ...prev, [route.id]: tripId }));
+
+      // Fetch live deals from Edge Function (falls back to static)
+      const destInputs = destinations.map((dest, i) => {
+        const arrival = new Date(tripStart);
+        arrival.setDate(arrival.getDate() + destinations.slice(0, i).reduce((s, d) => s + d.days, 0));
+        const departure = new Date(arrival);
+        departure.setDate(departure.getDate() + dest.days);
+        return {
+          name: dest.name,
+          country: dest.country,
+          arrivalDate: arrival.toISOString().split("T")[0],
+          departureDate: departure.toISOString().split("T")[0],
+          lat: dest.lat,
+          lng: dest.lng,
+        };
+      });
+
+      setDealsLoading((prev) => ({ ...prev, [route.id]: true }));
+      searchDeals(destInputs).then(({ deals, isLive }) => {
+        setRouteDeals((prev) => ({ ...prev, [route.id]: deals }));
+        setRouteDealsLive((prev) => ({ ...prev, [route.id]: isLive }));
+        setDealsLoading((prev) => ({ ...prev, [route.id]: false }));
+      });
     } catch (err) {
       console.error("Failed to create trip:", err);
     } finally {
@@ -676,16 +719,37 @@ export function PlanningScreen() {
                             {route.budget}
                           </span>
                         </div>
-                        <Button
-                          className="!text-xs !px-4 !py-2"
-                          disabled={addingTrip === route.id}
-                          onClick={() => handleAddToTrip(route)}
-                        >
-                          {addingTrip === route.id
-                            ? "Creating..."
-                            : "Add to Trip"}
-                        </Button>
+                        {createdTrips[route.id] ? (
+                          <Button
+                            className="!text-xs !px-4 !py-2 !bg-success"
+                            onClick={() => navigate("/calendar")}
+                          >
+                            📅 Go to Calendar
+                          </Button>
+                        ) : (
+                          <Button
+                            className="!text-xs !px-4 !py-2"
+                            disabled={addingTrip === route.id}
+                            onClick={() => handleAddToTrip(route)}
+                          >
+                            {addingTrip === route.id
+                              ? "Creating..."
+                              : "Add to Trip"}
+                          </Button>
+                        )}
                       </div>
+                      {/* Deals panel — shown after trip is added */}
+                      {(routeDeals[route.id] || dealsLoading[route.id]) && (
+                        <DealsPanel
+                          deals={routeDeals[route.id] ?? { flights: [], hotels: [], trains: [], activities: [], dining: [] }}
+                          destinationNames={(dests ?? []).map((d) => d.name)}
+                          isLive={routeDealsLive[route.id]}
+                          loading={dealsLoading[route.id]}
+                          tripId={createdTrips[route.id]}
+                          userId={user?.id}
+                          bookings={bookings}
+                        />
+                      )}
                     </div>
                   </Card>
                 );

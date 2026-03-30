@@ -1,6 +1,7 @@
 // Central OpenAI ChatGPT API wrapper
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY as string | undefined;
+const OPENAI_MODEL = (import.meta.env.VITE_OPENAI_MODEL as string) || "gpt-5.4";
 
 export async function callChatGPT(
   systemPrompt: string,
@@ -17,7 +18,7 @@ export async function callChatGPT(
         Authorization: `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: OPENAI_MODEL,
         max_tokens: maxTokens,
         messages: [
           { role: "system", content: systemPrompt },

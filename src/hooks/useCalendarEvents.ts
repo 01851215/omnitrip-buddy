@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../services/supabase";
 import { useAuthContext } from "../components/auth/AuthProvider";
 import { mapCalendarEvent } from "../utils/mapRow";
+import type { CalendarEvent } from "../types";
 
 export function useCalendarEvents(date?: string) {
   const { user } = useAuthContext();
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -13,7 +14,7 @@ export function useCalendarEvents(date?: string) {
     if (date) {
       query = query.gte("start_time", `${date}T00:00:00`).lte("start_time", `${date}T23:59:59`);
     }
-    query.then(({ data }) => setEvents((data ?? []).map(mapCalendarEvent)));
+    query.then(({ data }) => setEvents((data ?? []).map(mapCalendarEvent as any)));
   }, [user, date]);
 
   return events;
@@ -21,13 +22,16 @@ export function useCalendarEvents(date?: string) {
 
 export function useAllCalendarEvents() {
   const { user } = useAuthContext();
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     if (!user) return;
     supabase.from("calendar_events").select("*").eq("user_id", user.id)
-      .then(({ data }) => setEvents((data ?? []).map(mapCalendarEvent)));
-  }, [user]);
+      .then(({ data }) => setEvents((data ?? []).map(mapCalendarEvent as any)));
+  }, [user, version]);
 
-  return events;
+  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+
+  return { events, refresh };
 }

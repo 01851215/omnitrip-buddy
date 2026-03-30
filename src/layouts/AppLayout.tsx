@@ -6,9 +6,11 @@ import { BuddyPanel } from "../components/BuddyPanel/BuddyPanel";
 import { ProactiveAlert } from "../components/BuddyOverlay/ProactiveAlert";
 import { HandsFreeToggle } from "../components/HandsFreeMode/HandsFreeToggle";
 import { startAlertEngine, stopAlertEngine } from "../services/proactiveAlerts";
+import { requestLocation } from "../services/location";
 
 export function AppLayout() {
   useEffect(() => {
+    requestLocation();
     startAlertEngine();
     return () => stopAlertEngine();
   }, []);

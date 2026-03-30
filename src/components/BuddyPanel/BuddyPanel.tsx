@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useBuddyPanelStore } from "../../stores/buddyPanelStore";
 import { useLocationStore } from "../../stores/locationStore";
 import { useBuddyStore } from "../../stores/buddyStore";
@@ -38,9 +39,31 @@ function getDemoResponse(text: string): string {
   return demoResponses.default;
 }
 
-async function getResponse(text: string): Promise<string> {
+interface Intent {
+  route: string;
+  confirmation: string;
+}
+
+function detectIntent(text: string): Intent | null {
+  const lower = text.toLowerCase();
+  if (/\b(plan|create|start|new)\b.*\b(trip|journey|travel|vacation)\b/.test(lower) || /\blet'?s go to\b/.test(lower))
+    return { route: "/plan", confirmation: "Opening the trip planner for you!" };
+  if (/\b(add|log|record|track)\b.*\b(expense|spending|cost|money)\b/.test(lower))
+    return { route: "/budget", confirmation: "Opening the budget tracker so you can log that." };
+  if (/\b(show|open|check|view)\b.*\b(calendar|schedule|agenda)\b/.test(lower) || /\bwhat'?s\b.*\btoday\b/.test(lower))
+    return { route: "/calendar", confirmation: "Here's your calendar!" };
+  if (/\b(show|open|view)\b.*\b(trip|journey|footprint|past)\b/.test(lower) || /\bmy (trip|journeys)\b/.test(lower))
+    return { route: "/footprints", confirmation: "Showing your journeys!" };
+  if (/\b(show|open|view|edit)\b.*\b(profile|settings|preferences)\b/.test(lower))
+    return { route: "/profile", confirmation: "Opening your profile settings." };
+  if (/\b(go|take me|navigate)\b.*\b(home|dashboard)\b/.test(lower))
+    return { route: "/home", confirmation: "Taking you home!" };
+  return null;
+}
+
+async function getResponse(text: string, locationContext?: string): Promise<string> {
   const systemPrompt =
-    "You are OmniBuddy, a warm, emotionally intelligent travel companion. You're friendly, concise, and speak like a caring friend. Keep responses under 3 sentences.";
+    `You are OmniBuddy, a warm, emotionally intelligent travel companion. You're friendly, concise, and speak like a caring friend. Keep responses under 3 sentences.${locationContext ? ` The user is currently located at: ${locationContext}.` : ""}`;
 
   const response = await callChatGPT(systemPrompt, text, 200);
   return response ?? getDemoResponse(text);
@@ -50,7 +73,10 @@ export function BuddyPanel() {
   const { isOpen, messages, isProcessing, isListening, close, addMessage, setProcessing, setListening } =
     useBuddyPanelStore();
   const nearbyPOIs = useLocationStore((s) => s.nearbyPOIs);
+  const lat = useLocationStore((s) => s.lat);
+  const lng = useLocationStore((s) => s.lng);
   const setMood = useBuddyStore((s) => s.setMood);
+  const navigate = useNavigate();
   const feedRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll chat on new message
@@ -68,10 +94,30 @@ export function BuddyPanel() {
       timestamp: Date.now(),
     });
 
+    // Check for navigation intents before calling ChatGPT
+    const intent = detectIntent(text);
+    if (intent) {
+      addMessage({
+        id: `buddy-${Date.now()}`,
+        role: "buddy",
+        text: intent.confirmation,
+        timestamp: Date.now(),
+      });
+      speak(intent.confirmation).catch(() => {});
+      setMood("excited");
+      setTimeout(() => {
+        close();
+        navigate(intent.route);
+        setMood("idle");
+      }, 800);
+      return;
+    }
+
     setProcessing(true);
     setMood("thinking");
 
-    const response = await getResponse(text);
+    const locationContext = lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : undefined;
+    const response = await getResponse(text, locationContext);
 
     addMessage({
       id: `buddy-${Date.now()}`,

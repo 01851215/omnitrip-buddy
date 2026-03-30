@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback, type ChangeEvent } from "react";
 import { Buddy } from "../components/Buddy";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { ScreenLoader } from "../components/ui/Spinner";
 import { useLocationStore } from "../stores/locationStore";
 import { requestLocation } from "../services/location";
 import { useAuthContext } from "../components/auth/AuthProvider";
@@ -15,54 +16,98 @@ const BUDGET_OPTIONS = ["budget", "moderate", "luxury"] as const;
 const TONE_OPTIONS = ["warm", "energetic", "calm"] as const;
 const ALERT_LABELS = ["Rare", "Low", "Normal", "Often", "Frequent"];
 
+function useDebounced<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 export function ProfileScreen() {
-  const { permission, quietMode, toggleQuietMode } = useLocationStore();
+  const { permission, quietMode, toggleQuietMode, setAlertFrequency } = useLocationStore();
   const { user, signOut } = useAuthContext();
   const { profile, travelProfile, loading, updateProfile, updateTravelProfile } = useProfile();
 
-  const [editingBasic, setEditingBasic] = useState(false);
-  const [editingBuddy, setEditingBuddy] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Local edit state for basic info
-  const [draftName, setDraftName] = useState("");
-  const [draftAge, setDraftAge] = useState("");
-  const [draftBio, setDraftBio] = useState("");
+  // Auto-save basic info fields — gate on user edits to avoid overwriting on init
+  const [localName, setLocalName] = useState("");
+  const [localAge, setLocalAge] = useState("");
+  const [localBio, setLocalBio] = useState("");
+  const [localBuddyName, setLocalBuddyName] = useState("");
+  const [initialized, setInitialized] = useState(false);
+  const userEditedBasic = useRef(false);
+  const userEditedBuddy = useRef(false);
 
-  // Local edit state for buddy settings
-  const [draftBuddyName, setDraftBuddyName] = useState("");
-  const [draftTone, setDraftTone] = useState("warm");
+  // Initialize local state from profile once loaded
+  useEffect(() => {
+    if (profile && !initialized) {
+      setLocalName(profile.displayName ?? "");
+      setLocalAge(profile.age != null ? String(profile.age) : "");
+      setLocalBio(profile.bio ?? "");
+      setLocalBuddyName(profile.buddyName || "OmniBuddy");
+      setInitialized(true);
+    }
+  }, [profile, initialized]);
 
-  const startEditBasic = () => {
-    setDraftName(profile?.displayName ?? "");
-    setDraftAge(profile?.age != null ? String(profile.age) : "");
-    setDraftBio(profile?.bio ?? "");
-    setEditingBasic(true);
-  };
+  // Wrap setters to track when the user actually types
+  const onNameChange = (e: ChangeEvent<HTMLInputElement>) => { userEditedBasic.current = true; setLocalName(e.target.value); };
+  const onAgeChange = (e: ChangeEvent<HTMLInputElement>) => { userEditedBasic.current = true; setLocalAge(e.target.value); };
+  const onBioChange = (e: ChangeEvent<HTMLTextAreaElement>) => { userEditedBasic.current = true; setLocalBio(e.target.value); };
+  const onBuddyNameChange = (e: ChangeEvent<HTMLInputElement>) => { userEditedBuddy.current = true; setLocalBuddyName(e.target.value); };
 
-  const saveBasic = () => {
+  // Debounced auto-save for basic info
+  const debouncedName = useDebounced(localName, 800);
+  const debouncedAge = useDebounced(localAge, 800);
+  const debouncedBio = useDebounced(localBio, 800);
+  const debouncedBuddyName = useDebounced(localBuddyName, 800);
+
+  useEffect(() => {
+    if (!userEditedBasic.current || !initialized || !profile) return;
+    if (debouncedName === profile.displayName && (debouncedAge === (profile.age != null ? String(profile.age) : "")) && debouncedBio === profile.bio) return;
     updateProfile({
-      displayName: draftName,
-      age: draftAge ? Number(draftAge) : null,
-      bio: draftBio,
+      displayName: debouncedName,
+      age: debouncedAge ? Number(debouncedAge) : null,
+      bio: debouncedBio,
     });
-    setEditingBasic(false);
-  };
+  }, [debouncedName, debouncedAge, debouncedBio]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startEditBuddy = () => {
-    setDraftBuddyName(profile?.buddyName ?? "OmniBuddy");
-    setDraftTone((travelProfile?.buddySettings?.tone as string) ?? "warm");
-    setEditingBuddy(true);
-  };
+  useEffect(() => {
+    if (!userEditedBuddy.current || !initialized || !profile) return;
+    if (debouncedBuddyName === (profile.buddyName || "OmniBuddy")) return;
+    updateProfile({ buddyName: debouncedBuddyName });
+  }, [debouncedBuddyName]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveBuddy = () => {
-    updateProfile({ buddyName: draftBuddyName });
+  const handleToneChange = useCallback((tone: string) => {
     updateTravelProfile({
-      buddySettings: { ...(travelProfile?.buddySettings ?? {}), tone: draftTone },
+      buddySettings: { ...(travelProfile?.buddySettings ?? {}), tone },
     });
-    setEditingBuddy(false);
-  };
+  }, [travelProfile?.buddySettings, updateTravelProfile]);
+
+  // Persist quiet mode to Supabase alongside local toggle
+  const handleToggleQuietMode = useCallback(() => {
+    const newValue = !quietMode;
+    toggleQuietMode();
+    updateTravelProfile({
+      notificationSettings: {
+        ...(travelProfile?.notificationSettings ?? {}),
+        quietMode: newValue,
+      },
+    });
+  }, [quietMode, toggleQuietMode, travelProfile?.notificationSettings, updateTravelProfile]);
+
+  // Restore quiet mode from Supabase on load
+  useEffect(() => {
+    if (travelProfile?.notificationSettings?.quietMode !== undefined) {
+      const saved = travelProfile.notificationSettings.quietMode as boolean;
+      if (saved !== quietMode) {
+        toggleQuietMode();
+      }
+    }
+  }, [travelProfile?.notificationSettings?.quietMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentTone = (travelProfile?.buddySettings?.tone as string) ?? "warm";
   const alertFrequency = (travelProfile?.notificationSettings?.alertFrequency as number) ?? 3;
@@ -108,11 +153,7 @@ export function ProfileScreen() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-sm text-text-muted">Loading profile...</p>
-      </div>
-    );
+    return <ScreenLoader message="Loading profile..." />;
   }
 
   return (
@@ -158,59 +199,39 @@ export function ProfileScreen() {
         </div>
       </div>
 
-      {/* Basic Info */}
+      {/* Basic Info — auto-saves on change */}
       <div className="px-5">
         <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold">Basic Info</h3>
-            {!editingBasic && (
-              <button type="button" onClick={startEditBasic} className="text-primary" aria-label="Edit basic info">
-                <PencilIcon />
-              </button>
-            )}
+          <h3 className="text-sm font-semibold mb-3">Basic Info</h3>
+          <div className="space-y-3">
+            <Field label="Display Name">
+              <input
+                type="text"
+                value={localName}
+                onChange={onNameChange}
+                placeholder="Your name"
+                className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </Field>
+            <Field label="Age">
+              <input
+                type="number"
+                value={localAge}
+                onChange={onAgeChange}
+                placeholder="Age"
+                className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </Field>
+            <Field label="Bio / Tagline">
+              <textarea
+                value={localBio}
+                onChange={onBioChange}
+                placeholder="Tell us about yourself..."
+                rows={2}
+                className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+              />
+            </Field>
           </div>
-          {editingBasic ? (
-            <div className="space-y-3">
-              <Field label="Display Name">
-                <input
-                  type="text"
-                  value={draftName}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </Field>
-              <Field label="Age">
-                <input
-                  type="number"
-                  value={draftAge}
-                  onChange={(e) => setDraftAge(e.target.value)}
-                  className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </Field>
-              <Field label="Bio / Tagline">
-                <textarea
-                  value={draftBio}
-                  onChange={(e) => setDraftBio(e.target.value)}
-                  rows={2}
-                  className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                />
-              </Field>
-              <div className="flex gap-2 pt-1">
-                <Button className="!text-xs !px-4 !py-2" onClick={saveBasic}>
-                  Save
-                </Button>
-                <Button variant="ghost" className="!text-xs !px-4 !py-2" onClick={() => setEditingBasic(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <StatRow label="Name" value={profile?.displayName || "Not set"} />
-              <StatRow label="Age" value={profile?.age != null ? String(profile.age) : "Not set"} />
-              <StatRow label="Bio" value={profile?.bio || "Not set"} />
-            </div>
-          )}
         </Card>
       </div>
 
@@ -276,7 +297,7 @@ export function ProfileScreen() {
                 <p className="text-sm font-medium">Quiet Mode</p>
                 <p className="text-[10px] text-text-muted">Pause proactive suggestions</p>
               </div>
-              <ToggleSwitch checked={quietMode} onToggle={toggleQuietMode} />
+              <ToggleSwitch checked={quietMode} onToggle={handleToggleQuietMode} />
             </div>
             <SliderField
               label="Alert Frequency"
@@ -284,74 +305,52 @@ export function ProfileScreen() {
               min={1}
               max={5}
               labels={ALERT_LABELS}
-              onChange={(v) =>
+              onChange={(v) => {
+                setAlertFrequency(v);
                 updateTravelProfile({
                   notificationSettings: {
                     ...(travelProfile?.notificationSettings ?? {}),
                     alertFrequency: v,
                   },
-                })
-              }
+                });
+              }}
             />
           </div>
         </Card>
       </div>
 
-      {/* Buddy Settings */}
+      {/* Buddy Settings — auto-saves on change */}
       <div className="px-5">
         <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold">Buddy Settings</h3>
-            {!editingBuddy && (
-              <button type="button" onClick={startEditBuddy} className="text-primary" aria-label="Edit buddy settings">
-                <PencilIcon />
-              </button>
-            )}
-          </div>
+          <h3 className="text-sm font-semibold mb-3">Buddy Settings</h3>
           <div className="space-y-3">
-            {editingBuddy ? (
-              <>
-                <Field label="Buddy Name">
-                  <input
-                    type="text"
-                    value={draftBuddyName}
-                    onChange={(e) => setDraftBuddyName(e.target.value)}
-                    className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </Field>
-                <Field label="Personality Tone">
-                  <div className="flex gap-2">
-                    {TONE_OPTIONS.map((tone) => (
-                      <button
-                        key={tone}
-                        type="button"
-                        onClick={() => setDraftTone(tone)}
-                        className={`flex-1 text-xs py-1.5 rounded-full font-medium transition-colors ${
-                          draftTone === tone
-                            ? "bg-primary text-white"
-                            : "bg-cream-dark text-text-secondary"
-                        }`}
-                      >
-                        {tone.charAt(0).toUpperCase() + tone.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-                <div className="flex gap-2 pt-1">
-                  <Button className="!text-xs !px-4 !py-2" onClick={saveBuddy}>
-                    Save
-                  </Button>
-                  <Button variant="ghost" className="!text-xs !px-4 !py-2" onClick={() => setEditingBuddy(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <StatRow label="Name" value={profile?.buddyName || "OmniBuddy"} />
-                <StatRow label="Tone" value={currentTone.charAt(0).toUpperCase() + currentTone.slice(1)} />
-              </>
-            )}
+            <Field label="Buddy Name">
+              <input
+                type="text"
+                value={localBuddyName}
+                onChange={onBuddyNameChange}
+                placeholder="OmniBuddy"
+                className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </Field>
+            <Field label="Personality Tone">
+              <div className="flex gap-2">
+                {TONE_OPTIONS.map((tone) => (
+                  <button
+                    key={tone}
+                    type="button"
+                    onClick={() => handleToneChange(tone)}
+                    className={`flex-1 text-xs py-1.5 rounded-full font-medium transition-colors ${
+                      currentTone === tone
+                        ? "bg-primary text-white"
+                        : "bg-cream-dark text-text-secondary"
+                    }`}
+                  >
+                    {tone.charAt(0).toUpperCase() + tone.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </Field>
           </div>
         </Card>
       </div>
@@ -439,14 +438,6 @@ function ToggleSwitch({ checked, onToggle }: { checked: boolean; onToggle: () =>
         }`}
       />
     </button>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-      <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
-    </svg>
   );
 }
 

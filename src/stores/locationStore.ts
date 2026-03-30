@@ -23,6 +23,7 @@ interface LocationState {
   quietMode: boolean;
   handsFreeMode: boolean;
   lastAlertTime: number;
+  alertFrequency: number; // 1 (rare) to 5 (frequent)
 
   setPermission: (p: "prompt" | "granted" | "denied") => void;
   setPosition: (lat: number, lng: number) => void;
@@ -31,6 +32,7 @@ interface LocationState {
   dismissAlert: (poiId: string) => void;
   toggleQuietMode: () => void;
   toggleHandsFree: () => void;
+  setAlertFrequency: (v: number) => void;
 }
 
 /** Haversine distance in meters */
@@ -61,6 +63,7 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   quietMode: false,
   handsFreeMode: false,
   lastAlertTime: 0,
+  alertFrequency: 3,
 
   setPermission: (permission) => set({ permission }),
   setPosition: (lat, lng) => {
@@ -87,4 +90,5 @@ export const useLocationStore = create<LocationState>((set, get) => ({
     })),
   toggleQuietMode: () => set((s) => ({ quietMode: !s.quietMode })),
   toggleHandsFree: () => set((s) => ({ handsFreeMode: !s.handsFreeMode })),
+  setAlertFrequency: (v) => set({ alertFrequency: v }),
 }));

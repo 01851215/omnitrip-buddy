@@ -18,7 +18,6 @@ interface ImportMetaEnv {
   readonly VITE_BUDDY_USE_SPLINE?: string;
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_ANON_KEY?: string;
-  readonly VITE_CLAUDE_API_KEY?: string;
   readonly VITE_ELEVENLABS_API_KEY?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   readonly VITE_FOURSQUARE_API_KEY?: string;

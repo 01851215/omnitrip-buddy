@@ -10,8 +10,9 @@ AI-powered travel companion app. Plan trips, explore destinations with a day-by-
 | Styling | Tailwind CSS v4 (`@theme` in CSS, no config file) |
 | State | Zustand (buddyStore, locationStore, tripStore, etc.) |
 | Backend | Supabase (PostgreSQL + Auth + RLS + Storage) |
-| AI Chat | OpenAI ChatGPT API (with demo fallback) |
-| AI Planning | ChatGPT API for trip suggestions (with demo fallback) |
+| AI Chat | OpenAI GPT-5.4 API (with demo fallback) |
+| AI Planning | GPT-5.4 for trip suggestions (with demo fallback) |
+| Booking | Amadeus API (real prices) + Stripe Checkout (payments) + affiliate links |
 | Maps | Leaflet.js |
 | Charts | Custom SVG (VibeChart, CategoryBreakdown) |
 | Voice | Web Speech API (STT) + ElevenLabs / browser TTS |
@@ -76,7 +77,22 @@ npm run dev             # Runs on http://localhost:5173
 VITE_SUPABASE_URL=<your-supabase-project-url>
 VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
 VITE_OPENAI_API_KEY=<your-openai-api-key>
+VITE_OPENAI_MODEL=gpt-5.4       # optional, defaults to gpt-5.4
 ```
+
+### Booking Engine APIs (Supabase Edge Function secrets)
+
+These are set as Supabase Edge Function secrets, not frontend env vars:
+
+| Variable | Where to get it |
+|----------|----------------|
+| `AMADEUS_API_KEY` | [developers.amadeus.com](https://developers.amadeus.com) — create a Self-Service app (free test tier: 2,000 calls/month) |
+| `AMADEUS_API_SECRET` | Same as above |
+| `STRIPE_SECRET_KEY` | [dashboard.stripe.com](https://dashboard.stripe.com) → Developers → API Keys |
+| `STRIPE_WEBHOOK_SECRET` | Stripe Dashboard → Webhooks → Add endpoint pointing to your `stripe-webhook` Edge Function URL |
+| `KIWI_API_KEY` | *(optional)* [tequila.kiwi.com](https://tequila.kiwi.com) for supplementary flight/train data |
+
+Set them via: `supabase secrets set AMADEUS_API_KEY=... AMADEUS_API_SECRET=... STRIPE_SECRET_KEY=... STRIPE_WEBHOOK_SECRET=...`
 
 ### Test Account
 
@@ -90,7 +106,8 @@ Password: test1234
 - **Project ID**: `tswpybvapytccwdixoxo`
 - **Auth**: Email/password with auto-confirm trigger (bypasses email verification for demo)
 - **RLS**: All tables restricted to `auth.uid() = user_id`
-- **Tables**: profiles, trips, destinations, trip_days, activities, budgets, expenses, calendar_events, travel_profiles, journal_entries, dream_trips, trip_reflections
+- **Tables**: profiles, trips, destinations, trip_days, activities, budgets, expenses, calendar_events, travel_profiles, journal_entries, dream_trips, trip_reflections, bookings
+- **Edge Functions**: `search-deals` (Amadeus proxy), `create-checkout` (Stripe session), `stripe-webhook` (payment confirmation)
 
 ### Data Mapping
 

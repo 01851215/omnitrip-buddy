@@ -53,6 +53,7 @@ export interface Destination {
   arrivalDate: string;
   departureDate: string;
   timezone: string;
+  coverImage?: string;
 }
 
 // ── Itinerary ──────────────────────────────────────────
@@ -168,4 +169,28 @@ export interface DreamTrip {
   title: string;
   description: string;
   coverImage?: string;
+}
+
+// ── Booking ───────────────────────────────────────────
+export type BookingStatus = "pending" | "confirmed" | "external" | "cancelled" | "refunded";
+export type DealCategory = "flights" | "hotels" | "trains" | "activities" | "dining";
+
+export interface Booking {
+  id: string;
+  userId: string;
+  tripId?: string;
+  dealCategory: DealCategory;
+  provider: string;
+  title: string;
+  priceAmount: number;
+  currency: string;
+  status: BookingStatus;
+  stripeSessionId?: string;
+  stripePaymentIntentId?: string;
+  externalBookingRef?: string;
+  bookingUrl?: string;
+  startTime?: string;
+  endTime?: string;
+  metadata: Record<string, unknown>;
+  createdAt: number;
 }

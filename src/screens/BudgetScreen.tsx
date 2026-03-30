@@ -3,9 +3,11 @@ import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, PieChart, Pie, Cell
 import { useActiveTrip } from "../hooks/useTrips";
 import { useExpenses, useBudget, useCategoryTotals } from "../hooks/useExpenses";
 import { Card } from "../components/ui/Card";
+import { EmptyState } from "../components/ui/EmptyState";
 import { useBuddyStore } from "../stores/buddyStore";
 import { Button } from "../components/ui/Button";
 import { supabase } from "../services/supabase";
+import { convertToUSD, SUPPORTED_CURRENCIES } from "../utils/currency";
 import type { ExpenseCategory } from "../types";
 
 const categoryEmoji: Record<ExpenseCategory, string> = {
@@ -19,7 +21,7 @@ const categoryColor: Record<ExpenseCategory, string> = {
 };
 
 export function BudgetScreen() {
-  const trip = useActiveTrip();
+  const { trip } = useActiveTrip();
   const expenses = useExpenses(trip?.id);
   const budget = useBudget(trip?.id);
   const { totals, total } = useCategoryTotals(trip?.id);
@@ -121,23 +123,31 @@ export function BudgetScreen() {
           <h3 className="font-semibold text-sm">Recent Flow</h3>
           <span className="text-xs text-primary font-medium">View All</span>
         </div>
-        <div className="space-y-2">
-          {sorted.slice(-5).reverse().map((e) => (
-            <Card key={e.id} className="flex items-center gap-3 !py-3">
-              <span className="text-lg">{categoryEmoji[e.category as ExpenseCategory]}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{e.description}</p>
-                <p className="text-[10px] text-text-muted">
-                  {e.location} · {new Date(e.timestamp).toLocaleDateString("en", { month: "short", day: "numeric" })}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-semibold">-${e.convertedAmount}</p>
-                <span className="text-[9px] uppercase text-text-muted">{e.category}</span>
-              </div>
-            </Card>
-          ))}
-        </div>
+        {sorted.length === 0 ? (
+          <EmptyState
+            icon="💰"
+            title="No expenses yet"
+            description="Tap + to log your first expense."
+          />
+        ) : (
+          <div className="space-y-2">
+            {sorted.slice(-5).reverse().map((e) => (
+              <Card key={e.id} className="flex items-center gap-3 !py-3">
+                <span className="text-lg">{categoryEmoji[e.category as ExpenseCategory]}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{e.description}</p>
+                  <p className="text-[10px] text-text-muted">
+                    {e.location} · {new Date(e.timestamp).toLocaleDateString("en", { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold">-${e.convertedAmount}</p>
+                  <span className="text-[9px] uppercase text-text-muted">{e.category}</span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Quick Log FAB */}
@@ -179,16 +189,18 @@ export function BudgetScreen() {
 
 function QuickLog({ tripId, onClose }: { tripId?: string; onClose: () => void }) {
   const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState("USD");
   const [category, setCategory] = useState<ExpenseCategory>("food");
   const [desc, setDesc] = useState("");
 
   const handleSave = async () => {
     if (!tripId || !amount) return;
+    const raw = parseFloat(amount);
     await supabase.from("expenses").insert({
       trip_id: tripId,
-      amount: parseFloat(amount),
-      currency: "USD",
-      converted_amount: parseFloat(amount),
+      amount: raw,
+      currency,
+      converted_amount: convertToUSD(raw, currency),
       category,
       description: desc || categoryLabel[category],
       location: "Current location",
@@ -203,14 +215,25 @@ function QuickLog({ tripId, onClose }: { tripId?: string; onClose: () => void })
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
       <div className="relative bg-surface rounded-t-3xl w-full max-w-[430px] p-6 space-y-4">
         <h3 className="font-semibold text-lg font-serif">Quick Log</h3>
-        <input
-          type="number"
-          placeholder="Amount ($)"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
-          autoFocus
-        />
+        <div className="flex gap-2">
+          <input
+            type="number"
+            placeholder="Amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="flex-1 px-4 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
+            autoFocus
+          />
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className="w-24 px-2 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
+          >
+            {SUPPORTED_CURRENCIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
         <div className="flex flex-wrap gap-2">
           {(Object.keys(categoryLabel) as ExpenseCategory[]).map((c) => (
             <button

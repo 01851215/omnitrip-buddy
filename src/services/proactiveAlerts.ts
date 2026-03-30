@@ -7,10 +7,16 @@ import { useBuddyStore } from "../stores/buddyStore";
 import { generatePOINarration } from "./chatgpt";
 import { speak } from "./tts";
 
-const MAX_ALERTS_PER_HOUR = 3;
-const MIN_ALERT_INTERVAL = 10 * 60 * 1000; // 10 minutes between alerts
 const MAX_PROXIMITY = 200; // meters
 const MAX_WALKING_SPEED = 1.5; // m/s — roughly walking pace
+
+// alertFrequency 1–5 maps to these rate limits
+function getAlertLimits(frequency: number) {
+  const clamped = Math.max(1, Math.min(5, Math.round(frequency)));
+  const maxPerHour = [1, 2, 3, 5, 8][clamped - 1];
+  const minInterval = [20, 15, 10, 6, 3][clamped - 1] * 60 * 1000;
+  return { maxPerHour, minInterval };
+}
 
 // High-confidence POI categories that match typical user preferences
 const HIGH_CONFIDENCE_CATEGORIES = [
@@ -68,10 +74,10 @@ async function checkForAlerts(): Promise<void> {
   // Skip if quiet mode, no position, or denied permission
   if (store.quietMode || !store.lat || !store.lng || store.permission !== "granted") return;
 
-  // Rate limit: max 3/hour, min 10min between
-  const recentAlerts = store.alertHistory.length; // simplified
-  if (recentAlerts >= MAX_ALERTS_PER_HOUR) return;
-  if (Date.now() - store.lastAlertTime < MIN_ALERT_INTERVAL) return;
+  const { maxPerHour, minInterval } = getAlertLimits(store.alertFrequency);
+  const recentAlerts = store.alertHistory.length;
+  if (recentAlerts >= maxPerHour) return;
+  if (Date.now() - store.lastAlertTime < minInterval) return;
 
   // Smart trigger: user should be walking (or stationary), not in a vehicle
   if (store.speed !== null && store.speed > MAX_WALKING_SPEED) return;

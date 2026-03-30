@@ -15,6 +15,8 @@ interface LeafletMapProps {
   center: [number, number];
   zoom?: number;
   markers?: MapMarker[];
+  polyline?: [number, number][];
+  fitBounds?: boolean;
   userLocation?: { lat: number; lng: number } | null;
   className?: string;
   height?: string;
@@ -48,6 +50,8 @@ export function LeafletMap({
   center,
   zoom = 14,
   markers = [],
+  polyline,
+  fitBounds = false,
   userLocation,
   className = "",
   height = "200px",
@@ -56,6 +60,7 @@ export function LeafletMap({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const userMarkerRef = useRef<L.Marker | null>(null);
+  const polylineRef = useRef<L.Polyline | null>(null);
 
   // Initialize map
   useEffect(() => {
@@ -129,6 +134,29 @@ export function LeafletMap({
       ).addTo(mapInstanceRef.current);
     }
   }, [userLocation?.lat, userLocation?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Draw polyline connecting points
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    if (polylineRef.current) {
+      mapInstanceRef.current.removeLayer(polylineRef.current);
+      polylineRef.current = null;
+    }
+
+    if (polyline && polyline.length >= 2) {
+      polylineRef.current = L.polyline(polyline, {
+        color: "#2D6A5A",
+        weight: 2.5,
+        opacity: 0.7,
+        dashArray: "8, 6",
+      }).addTo(mapInstanceRef.current);
+
+      if (fitBounds) {
+        mapInstanceRef.current.fitBounds(polylineRef.current.getBounds(), { padding: [30, 30] });
+      }
+    }
+  }, [polyline, fitBounds]);
 
   return (
     <div

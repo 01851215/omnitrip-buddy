@@ -14,7 +14,7 @@ const demoPOIs: POI[] = [
     address: "Jl. Tegal Sari No.2, Ubud",
     lat: -8.5069,
     lng: 115.2624,
-    buddyMessage: "Hey Sarah! There's an amazing local warung just 180m away — Ibu Oka is legendary for their roast suckling pig. It matches your love for authentic local food!",
+    buddyMessage: "Hey! There's an amazing local warung just 180m away — Ibu Oka is legendary for their roast suckling pig. It matches your love for authentic local food!",
   },
   {
     id: "poi-2",
@@ -76,7 +76,7 @@ export async function fetchNearbyPOIs(lat: number, lng: number): Promise<POI[]> 
       address: place.location?.formatted_address ?? place.location?.address ?? "",
       lat: place.geocodes?.main?.latitude ?? null,
       lng: place.geocodes?.main?.longitude ?? null,
-      buddyMessage: `Hey Sarah! I found ${place.name} just ${place.distance}m away — looks like a great spot based on your preferences!`,
+      buddyMessage: `Hey! I found ${place.name} just ${place.distance}m away — looks like a great spot based on your preferences!`,
     }));
   } catch {
     return demoPOIs.slice(0, 2);

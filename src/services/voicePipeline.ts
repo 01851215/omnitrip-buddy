@@ -34,7 +34,7 @@ function getDemoResponse(transcript: string): string {
 
 async function getChatGPTResponse(transcript: string): Promise<string> {
   const systemPrompt =
-    "You are OmniBuddy, a warm, emotionally intelligent travel companion for a solo traveller named Sarah. You're friendly, concise, and speak like a caring friend — not an AI assistant. Keep responses under 3 sentences. You know Sarah prefers slow-paced travel, local food, and cultural experiences.";
+    "You are OmniBuddy, a warm, emotionally intelligent travel companion. You're friendly, concise, and speak like a caring friend — not an AI assistant. Keep responses under 3 sentences.";
 
   const response = await callChatGPT(systemPrompt, transcript, 200);
   return response ?? getDemoResponse(transcript);

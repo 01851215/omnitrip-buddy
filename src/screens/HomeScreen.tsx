@@ -1,24 +1,75 @@
-import { useNavigate } from "react-router-dom";
-import { useActiveTrip, useDreamTrips, useDestinations } from "../hooks/useTrips";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useActiveTrip, useDreamTrips, useDestinations, updateTripStatus } from "../hooks/useTrips";
 import { useExpenses, useBudget } from "../hooks/useExpenses";
 import { useAllCalendarEvents } from "../hooks/useCalendarEvents";
+import { useProfile } from "../hooks/useProfile";
 import { useLocationStore } from "../stores/locationStore";
+import { useBuddyStore } from "../stores/buddyStore";
+import { useBuddyPanelStore } from "../stores/buddyPanelStore";
+import { callChatGPT } from "../services/chatgpt";
+import { speak } from "../services/tts";
 import { Card } from "../components/ui/Card";
 import { Buddy } from "../components/Buddy";
 import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
 import { LeafletMap } from "../components/map/LeafletMap";
+
+const DEFAULT_REFLECTION =
+  "I've been looking at your spending patterns. Consider trying some local street food tonight — it's often the most memorable part of any trip, and easy on the budget!";
 
 export function HomeScreen() {
   const navigate = useNavigate();
-  const trip = useActiveTrip();
-  const expenses = useExpenses(trip?.id);
-  const budget = useBudget(trip?.id);
-  const events = useAllCalendarEvents();
+  const location = useLocation();
+  const { trip, refresh: refreshTrip } = useActiveTrip();
+  const [completing, setCompleting] = useState(false);
+
+  // Refresh trip data whenever we navigate back to /home
+  useEffect(() => { refreshTrip(); }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [reflectionDismissed, setReflectionDismissed] = useState(false);
+  const [reflectionText, setReflectionText] = useState(DEFAULT_REFLECTION);
+  const tripId = trip?.id;
+  const expenses = useExpenses(tripId);
+  const budget = useBudget(tripId);
+  const { events } = useAllCalendarEvents();
   const dreams = useDreamTrips();
-  const destinations = useDestinations(trip?.id);
+  const destinations = useDestinations(tripId);
+  const { profile } = useProfile();
   const { lat, lng, nearbyPOIs } = useLocationStore();
+  const setMood = useBuddyStore((s) => s.setMood);
+  const { open: openPanel, addMessage } = useBuddyPanelStore();
 
   const totalSpent = expenses.reduce((s, e) => s + e.convertedAmount, 0);
+
+  // Generate dynamic reflection from ChatGPT based on budget data
+  useEffect(() => {
+    if (!trip || reflectionDismissed) return;
+    const budgetLabel = budget
+      ? `$${totalSpent.toLocaleString()} spent of $${budget.totalPlanned.amount.toLocaleString()} planned`
+      : null;
+    if (!budgetLabel) return;
+
+    callChatGPT(
+      "You are OmniBuddy, a warm travel companion. Write a short (2-3 sentence) budget reflection for the traveller. Be specific, conversational, and gently suggest one actionable tip. Do not use their name.",
+      `Trip: ${trip.title}. Budget status: ${budgetLabel}. Day ${Math.max(1, Math.ceil((Date.now() - new Date(trip.startDate).getTime()) / 86400000))} of trip. Top expense categories from their history.`,
+      150,
+    ).then((res) => {
+      if (res) setReflectionText(res);
+    });
+  }, [trip?.id, budget?.tripId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAcceptSuggestion = useCallback(() => {
+    setReflectionDismissed(true);
+    setMood("excited");
+    speak("Great choice! I'll keep an eye out for the best local spots nearby.").catch(() => {});
+    setTimeout(() => setMood("idle"), 3000);
+  }, [setMood]);
+
+  const handleTellMeMore = useCallback(() => {
+    const msgId = Date.now().toString();
+    addMessage({ id: msgId, role: "user", text: `Tell me more about: ${reflectionText}`, timestamp: Date.now() });
+    openPanel();
+  }, [reflectionText, addMessage, openPanel]);
   const todayEvents = events.filter((e) => {
     const d = new Date(e.startTime).toDateString();
     return d === new Date().toDateString();
@@ -45,14 +96,18 @@ export function HomeScreen() {
           </div>
           <span className="text-primary font-semibold text-sm">OmniTrip</span>
         </div>
-        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold">
-          S
+        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold overflow-hidden">
+          {profile?.avatarUrl ? (
+            <img src={profile.avatarUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            (profile?.displayName?.[0] ?? "T").toUpperCase()
+          )}
         </div>
       </div>
 
       {/* Ongoing Journey */}
-      {trip && (
-        <div className="px-5">
+      {trip ? (
+        <div className="px-5 space-y-2">
           <div
             className="relative rounded-2xl overflow-hidden h-48 cursor-pointer"
             onClick={() => navigate("/budget")}
@@ -65,7 +120,7 @@ export function HomeScreen() {
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4">
               <span className="text-[10px] uppercase tracking-wider text-white/70 font-medium">
-                Ongoing Journey
+                {trip.status === "planning" ? "Planned Journey" : "Ongoing Journey"}
               </span>
               <h2 className="text-xl font-bold text-white font-serif mt-0.5">
                 {trip.title}
@@ -76,6 +131,43 @@ export function HomeScreen() {
               </div>
             </div>
           </div>
+          {trip.status === "planning" ? (
+            <Button
+              className="w-full !text-xs"
+              disabled={completing}
+              onClick={async () => {
+                setCompleting(true);
+                await updateTripStatus(trip.id, "active");
+                refreshTrip();
+                setCompleting(false);
+              }}
+            >
+              {completing ? "Starting..." : "Start Trip"}
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              className="w-full !text-xs"
+              disabled={completing}
+              onClick={async () => {
+                setCompleting(true);
+                await updateTripStatus(trip.id, "completed");
+                refreshTrip();
+                setCompleting(false);
+              }}
+            >
+              {completing ? "Completing..." : "Mark Journey Complete"}
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="px-5">
+          <EmptyState
+            icon="✈️"
+            title="No active journey"
+            description="Plan your next adventure and it will show up here."
+            action={{ label: "Start Planning", onClick: () => navigate("/plan") }}
+          />
         </div>
       )}
 
@@ -84,7 +176,7 @@ export function HomeScreen() {
         <div className="px-5">
           <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Destinations</h3>
           <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-5 px-5 pb-1">
-            {destinations.map((dest: any) => (
+            {destinations.map((dest) => (
               <button
                 key={dest.id}
                 type="button"
@@ -153,7 +245,7 @@ export function HomeScreen() {
             <p className="text-xs text-text-secondary">
               {budget
                 ? `$${totalSpent.toLocaleString()} of $${budget.totalPlanned.amount.toLocaleString()}`
-                : "Sarah, you're on track"}
+                : "You're on track"}
             </p>
           </div>
         </Card>
@@ -187,25 +279,29 @@ export function HomeScreen() {
       )}
 
       {/* Buddy Reflection */}
-      <div className="px-5">
-        <Card className="!p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-full overflow-hidden">
-              <Buddy state="idle" size="mini" mode="video" />
+      {!reflectionDismissed && (
+        <div className="px-5">
+          <Card className="!p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-full overflow-hidden">
+                <Buddy state="idle" size="mini" mode="video" />
+              </div>
+              <h3 className="font-semibold text-sm">Buddy Reflection</h3>
             </div>
-            <h3 className="font-semibold text-sm">Buddy Reflection</h3>
-          </div>
-          <p className="text-xs text-text-secondary italic leading-relaxed">
-            "Sarah, I noticed you spent quite a bit on those artisanal ceramics today.
-            They are beautiful, but perhaps we should pivot to local street food for dinner
-            to balance the aesthetic experience with our mindful budget?"
-          </p>
-          <div className="flex gap-2 mt-4">
-            <Button className="!text-xs !px-4 !py-2">Accept Suggestion</Button>
-            <Button variant="ghost" className="!text-xs !px-4 !py-2">Tell me more</Button>
-          </div>
-        </Card>
-      </div>
+            <p className="text-xs text-text-secondary italic leading-relaxed">
+              "{reflectionText}"
+            </p>
+            <div className="flex gap-2 mt-4">
+              <Button className="!text-xs !px-4 !py-2" onClick={handleAcceptSuggestion}>
+                Accept Suggestion
+              </Button>
+              <Button variant="ghost" className="!text-xs !px-4 !py-2" onClick={handleTellMeMore}>
+                Tell me more
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Upcoming Dreams */}
       <div className="px-5">
