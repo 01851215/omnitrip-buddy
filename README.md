@@ -8,15 +8,19 @@ AI-powered travel companion app. Plan trips, explore destinations with a day-by-
 |-------|------|
 | Framework | React 19 + TypeScript + Vite |
 | Styling | Tailwind CSS v4 (`@theme` in CSS, no config file) |
-| State | Zustand (buddyStore, locationStore, tripStore, etc.) |
+| State | Zustand (`buddyStore`, `locationStore`, `tripStore`, `planningStore`, `profileStore`, etc.) |
 | Backend | Supabase (PostgreSQL + Auth + RLS + Storage) |
-| AI Chat | OpenAI GPT-5.4 API (with demo fallback) |
-| AI Planning | GPT-5.4 for trip suggestions (with demo fallback) |
+| AI Chat | OpenAI API — primary `gpt-5.4` with fallback chain (`gpt-5.4-mini`, `gpt-4o`, …) + demo fallback |
+| AI Planning | Same stack; query-aware fallbacks when models fail |
 | Booking | Amadeus API (real prices) + Stripe Checkout (payments) + affiliate links |
 | Maps | Leaflet.js |
 | Charts | Custom SVG (VibeChart, CategoryBreakdown) |
 | Voice | Web Speech API (STT) + ElevenLabs / browser TTS |
 | POI | Foursquare Places API (with demo fallback) |
+
+## Documentation
+
+- **Product workflow (journeys, calendar, booking, profile):** [`docs/workflow/`](docs/workflow/) — narrative + link to the [OmniTrip App Workflow FigJam](https://www.figma.com/board/N4izVzULfnLX8BLHiKNy98/OmniTrip-App-Workflow?node-id=0-1).
 
 ## Project Structure
 
@@ -27,6 +31,7 @@ src/
 │   ├── Buddy/          # BuddyContainer (floating button), BuddyOverlay
 │   ├── BuddyPanel/     # Chat panel (ChatFeed, POIFeed, QuickActions, PanelInput)
 │   ├── BottomNav/      # 5-tab bottom navigation
+│   ├── calendar/       # CalendarSyncSheet (ICS, deep links, subscription URL)
 │   ├── itinerary/      # ActivityCard, DaySection, AddActivitySheet
 │   ├── insights/       # VibeChart (radial SVG), CategoryBreakdown (bar chart)
 │   ├── profile/        # TagInput, SliderField
@@ -41,8 +46,8 @@ src/
 │   ├── FootprintsScreen.tsx   # Past trips, journal, behavioral insights
 │   └── ProfileScreen.tsx      # Editable profile, travel prefs, buddy settings
 ├── hooks/              # useAuth, useActiveTrip, useExpenses, useItinerary, useProfile, etc.
-├── services/           # supabase, chatgpt, travelInsights, speech, tts, location, poi, proactiveAlerts
-├── stores/             # Zustand stores (buddy, location, trip, user, voice, buddyPanel)
+├── services/           # supabase, chatgpt, tripAI, travelInsights, calendarSync, speech, tts, location, poi, proactiveAlerts
+├── stores/             # buddyStore, locationStore, tripStore, planningStore, profileStore, user, voice, buddyPanel
 ├── data/               # templates.ts (curated destination templates)
 ├── layouts/            # AppLayout (main shell with nav + buddy + alerts)
 ├── utils/              # mapRow.ts (snake_case <-> camelCase)
@@ -55,13 +60,15 @@ src/
 | Path | Screen | Description |
 |------|--------|-------------|
 | `/` | OnboardingScreen | Splash + login/signup |
+| `/reset-password` | ResetPasswordScreen | Set new password after recovery email (public) |
+| `/auth/calendar/callback` | OAuthCallbackScreen | Reserved for calendar OAuth redirects (public) |
 | `/home` | HomeScreen | Active trip dashboard |
 | `/plan` | PlanningScreen | AI trip planning studio |
 | `/destination/:id` | DestinationDetailScreen | Itinerary + map for a destination |
-| `/calendar` | CalendarScreen | Timeline & month views |
+| `/calendar` | CalendarScreen | Timeline & month views + Sync sheet |
 | `/budget` | BudgetScreen | Expense tracking & charts |
 | `/footprints` | FootprintsScreen | Past journeys & reflections |
-| `/profile` | ProfileScreen | User settings & preferences |
+| `/profile` | ProfileScreen | User settings & preferences (per-section Save) |
 
 ## Setup
 
@@ -105,9 +112,9 @@ Password: test1234
 
 - **Project ID**: `tswpybvapytccwdixoxo`
 - **Auth**: Email/password with auto-confirm trigger (bypasses email verification for demo)
-- **RLS**: All tables restricted to `auth.uid() = user_id`
-- **Tables**: profiles, trips, destinations, trip_days, activities, budgets, expenses, calendar_events, travel_profiles, journal_entries, dream_trips, trip_reflections, bookings
-- **Edge Functions**: `search-deals` (Amadeus proxy), `create-checkout` (Stripe session), `stripe-webhook` (payment confirmation)
+- **RLS**: Row-level security per table (e.g. `profiles.id = auth.uid()`, `trips.user_id = auth.uid()`, etc.)
+- **Tables**: profiles, trips, destinations, trip_days, activities, budgets, expenses, calendar_events, travel_profiles, journal_entries, dream_trips, trip_reflections, bookings, **calendar_subscriptions** (per-user ICS feed token)
+- **Edge Functions**: `search-deals` (Amadeus proxy), `create-checkout` (Stripe session), `stripe-webhook` (payment confirmation), **`calendar-feed`** (signed URL → dynamic `.ics` for subscribed calendars)
 
 ### Data Mapping
 
@@ -197,7 +204,7 @@ User requested upgrading from demo-only to user-testing ready. Agreed on 5 phase
 #### Phase 5: Full Profile Editor (COMPLETE)
 
 **What was done:**
-- Created `useProfile` hook — fetches/upserts to both `profiles` and `travel_profiles` tables
+- Created `useProfile` hook — fetches both `profiles` and `travel_profiles`; writes use store-backed save helpers (see Session 8 for `.update` vs `.upsert` rules)
 - Created `TagInput` component — pill display with add/remove
 - Created `SliderField` component — labeled range slider with tick labels
 - Rewrote `ProfileScreen.tsx` with 7 editable sections:
@@ -320,13 +327,9 @@ Replaced the static placeholder "Connected Path" and hardcoded "Behavioural Insi
 
 Updated `INTENSITY_OPTIONS` sub-text from "2-3 activities" / "3-4 activities" / "5-6 activities" to "2-3 per day" / "3-4 per day" / "5-6 per day" to match the actual AI prompt behavior.
 
-#### 4. Profile auto-save to Supabase
+#### 4. Profile persistence (superseded in later sessions)
 
-All profile sections now auto-save without requiring a Save button:
-
-- **Basic Info** (name, age, bio): Always-editable fields with 800ms debounced save to `profiles` table.
-- **Buddy Settings** (name, tone): Buddy name auto-saves with debounce; tone buttons save immediately to `travel_profiles.buddy_settings`.
-- **Quiet Mode**: Now persists to `travel_profiles.notification_settings.quietMode` and restores on load, so the setting survives page refreshes and is available to the LLM.
+Originally shipped with debounced auto-save; the app now uses **explicit Save per section** and a **`profileStore`** (see Session 8 below).
 
 #### 5. Active journey now shows on Home
 
@@ -355,7 +358,7 @@ Full audit of all reported profile issues. Root causes identified via live previ
 
 1. **DB migration** — Created `handle_new_user()` trigger that auto-inserts a `profiles` row on every new signup. Backfilled the 2 users who had no row. Tightened the Storage INSERT policy to enforce `(storage.foldername(name))[1] = auth.uid()`.
 
-2. **`updateProfile` → upsert** (`src/hooks/useProfile.ts`) — Switched from `.update()` (silent no-op on missing row) to `.upsert({ onConflict: "id" })` so saves are safe regardless of DB state.
+2. **`updateProfile` → upsert** (`src/hooks/useProfile.ts`) — At the time, switched from `.update()` to `.upsert` for missing rows. **Later correction (Session 8):** `profiles` has NOT NULL columns (`username`, `email`, `buddy_name`) without defaults; PostgREST `INSERT … ON CONFLICT` still evaluates the INSERT row first, so partial upserts returned **400** (`username` null). **`saveProfile` now uses `.update().eq("id", userId)`** (row guaranteed by `handle_new_user`). **`travel_profiles`** continues to use **`.upsert({ onConflict: "user_id" })`**.
 
 3. **Seed data fixed** (`src/services/seedSupabase.ts`) — `pace_preference: 0.35` → `3`, `budget_style: {object}` → `"moderate"`, `activity_preferences: {object}` → `["nature","culture","food","adventure"]`. Final profile write changed from `.update()` to `.upsert()`.
 
@@ -376,6 +379,40 @@ Full audit of all reported profile issues. Root causes identified via live previ
 
 ---
 
+### Session 8 — Booking, calendar sync, profile store & fixes (COMPLETE)
+
+**Booking & workflow**
+
+- Hybrid **deals** surface (Amadeus-backed Edge function + Stripe for in-app purchases + affiliate redirects where applicable).
+- Post-booking CTA flows toward **Calendar** (“Go on your calendar” style) so paid or confirmed items show on the embedded calendar.
+
+**Planning & calendar data**
+
+- **`planningStore`**: Planning UI state survives tab changes (e.g. Plan → Calendar → Plan).
+- Itinerary **accept** / activity flows sync into **`calendar_events`** where implemented.
+
+**Calendar → user’s own calendar**
+
+- **CalendarSyncSheet**: Google/Outlook **deep links** (no user Google Cloud setup), **.ics** download, and **subscription URL** via **`calendar-feed`** + **`calendar_subscriptions`**.
+
+**Profile**
+
+- **`profileStore`** + **`useProfile`**: single source of truth; avoids form reset on navigation.
+- **Save** per section: Basic Info, Travel, Notifications, Buddy.
+- **`profiles`**: `.update()` only (avoid NOT NULL failure on upsert INSERT branch).
+- **`travel_profiles`**: `.upsert` on `user_id`; no double-`JSON.stringify` on JSONB fields.
+- **Location**: multi-tier geolocation + IP fallback; **in-app toggle** to turn sharing off (stop watch, clear coordinates).
+
+**AI**
+
+- Fallback model chain; **gpt-5.4-mini** in rotation; query-aware itinerary fallback for city queries when models fail.
+
+**Docs**
+
+- Workflow narrative and FigJam link live under **`docs/workflow/`**.
+
+---
+
 ## Key Design Decisions
 
 - **snake_case ↔ camelCase**: DB uses Postgres convention, frontend uses JS convention. `mapRow.ts` handles conversion.
@@ -383,10 +420,68 @@ Full audit of all reported profile issues. Root causes identified via live previ
 - **Safe area insets**: `viewport-fit=cover` + `env(safe-area-inset-bottom)` for mobile browser chrome.
 - **Optimistic UI**: Profile and activity updates apply locally first, then persist to Supabase.
 - **Auto-confirm auth**: Supabase trigger auto-confirms new users for demo/testing flow.
-- **Auto-save with debounce**: Profile fields use an 800ms debounce before persisting to Supabase, preventing excessive writes.
+- **Profile saves**: Explicit **Save** per card; **`profileStore`** holds `profiles` + `travel_profiles` in memory across routes. **`profiles`** → `.update()`; **`travel_profiles`** → `.upsert`.
 - **Custom SVG charts over libraries**: VibeChart and CategoryBreakdown are implemented as inline SVG/JSX to avoid adding Recharts or similar dependencies for a small number of visualizations.
 - **LLM with computed fallbacks**: All AI-powered features (Buddy reflections, travel vibe analysis, trip planning) have client-side fallbacks that produce reasonable output from raw data when API keys are missing.
 
+---
+
+### Session 9 — In-App Booking with Affiliate Deep-Links (COMPLETE)
+
+Users can now browse and book deals directly from their personalized itinerary on the Planning screen. After "Add to Trip" is clicked and the trip is created, a **Deals Panel** appears under the route card showing curated live offers across 5 categories. The "Add to Trip" button then becomes **"📅 Go to Calendar"** which navigates to the calendar showing all booked trip dates.
+
+**What was done:**
+
+1. **`src/services/affiliateLinks.ts`** — Deep-link URL builder for 14 providers across all categories:
+   - Hotels: Booking.com, Airbnb, Hotels.com, Hostelworld
+   - Flights: Skyscanner, Google Flights, BudgetAir, Opodo
+   - Trains: Trainline, Rail Europe
+   - Activities: Viator, GetYourGuide, Klook
+   - Dining: OpenTable, TheFork, Tripadvisor
+   - All links pre-fill destination name, checkin/checkout dates so users land on relevant search results
+
+2. **`src/services/deals.ts`** — Curated deal generator that produces realistic deal cards (with deterministic price variants and destination-keyed images) for each destination in the route. Falls back gracefully when no live API data is available.
+
+3. **`src/components/booking/DealCard.tsx`** — Individual deal card (240px wide, horizontal scroll):
+   - Cover image, badge (e.g. "Bestseller", "Best price")
+   - Rating + review count
+   - "From $X" price + **View Deal** CTA (opens provider in new tab)
+   - Provider pills (all affiliate links for that deal)
+   - "Mark as Booked" button to record external bookings
+   - Shows **BookingBadge** if already booked via Stripe or marked externally
+
+4. **`src/components/booking/DealsPanel.tsx`** — Tabbed panel inside each route card:
+   - 5 tabs: ✈️ Flights / 🏨 Hotels / 🚄 Trains / 🎭 Activities / 🍽 Dining
+   - Badge count per tab
+   - Loading skeleton (pulse animation while deals fetch)
+   - "✅ Live prices from Amadeus" badge when live data is available, else "Comparing best prices"
+   - Provider attribution footer
+
+5. **`src/screens/PlanningScreen.tsx`** — Post-add-to-trip UX changes:
+   - `createdTrips` state tracks which route IDs have been added
+   - `routeDeals` state holds generated deal cards per route
+   - After `handleAddToTrip` succeeds: stores trip ID, generates deals, shows DealsPanel
+   - Button swaps to green **"📅 Go to Calendar"** — navigates to `/calendar`
+   - `planningStore` persists planning UI state across tab changes
+
+**Booking flow:**
+```
+Search trip → AI suggests routes → Select route → "Add to Trip"
+  → Trip created in Supabase → DealsPanel appears with hotel/flight/activity deals
+  → User clicks deal → Opens provider (Booking.com, Skyscanner, Viator, etc.)
+  → User books externally → Clicks "Mark as Booked" in app → recorded in bookings table
+  → "Add to Trip" button becomes "📅 Go to Calendar" → navigates to trip dates
+```
+
+**Files changed:**
+- `src/services/affiliateLinks.ts` — new: affiliate URL generator
+- `src/services/deals.ts` — new: curated deal generator
+- `src/components/booking/DealCard.tsx` — new: individual deal card
+- `src/components/booking/DealsPanel.tsx` — new: tabbed deals panel
+- `src/screens/PlanningScreen.tsx` — updated: deals integration + button swap
+
+---
+
 ## Version
 
-`v0.7.0 — Profile Fixes, Password Reset & Email Service`
+`v0.9.0 — In-app booking with affiliate deep-links, deals panel & calendar CTA`

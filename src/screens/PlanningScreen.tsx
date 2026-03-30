@@ -4,18 +4,18 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Buddy } from "../components/Buddy";
 import { useBuddyStore } from "../stores/buddyStore";
+import { usePlanningStore } from "../stores/planningStore";
 import { useAuthContext } from "../components/auth/AuthProvider";
 import { supabase } from "../services/supabase";
 import { templates } from "../data/templates";
 import {
   generateTripSuggestions,
   type RouteSuggestion,
-  type TripSuggestionResult,
   type PlanningConstraints,
 } from "../services/tripAI";
 import { LeafletMap, type MapMarker } from "../components/map/LeafletMap";
 import { useUserHistory, historyToPromptContext } from "../hooks/useUserHistory";
-import { searchDeals, type LiveDealResult } from "../services/searchApi";
+import { searchDeals } from "../services/searchApi";
 import { DealsPanel } from "../components/booking/DealsPanel";
 import { useBookings } from "../hooks/useBookings";
 
@@ -40,31 +40,32 @@ const INTENSITY_OPTIONS = [
 ] as const;
 
 export function PlanningScreen() {
-  const [query, setQuery] = useState("");
+  const {
+    query, setQuery,
+    result, setResult,
+    createdTrips, setCreatedTrips,
+    tripStartDates, setTripStartDates,
+    routeDeals, setRouteDeals,
+    routeDealsLive, setRouteDealsLive,
+    dealsLoading, setDealsLoading,
+    budgetStyle, setBudgetStyle,
+    customBudget, setCustomBudget,
+    startDate, setStartDate,
+    endDate, setEndDate,
+    intensity, setIntensity,
+    showConstraints, setShowConstraints,
+    resetPlanning,
+  } = usePlanningStore();
+
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<TripSuggestionResult | null>(null);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
-  const [createdTrips, setCreatedTrips] = useState<Record<string, string>>({});
-  const [tripStartDates, setTripStartDates] = useState<Record<string, string>>({});
-  const [routeDeals, setRouteDeals] = useState<Record<string, LiveDealResult>>({});
-  const [routeDealsLive, setRouteDealsLive] = useState<Record<string, boolean>>({});
-  const [dealsLoading, setDealsLoading] = useState<Record<string, boolean>>({});
   const { setMood } = useBuddyStore();
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const { history } = useUserHistory();
   const constraintsRef = useRef<PlanningConstraints>({});
-  // Track the first created trip for booking subscription
   const activeTripId = Object.values(createdTrips)[0];
   const { bookings } = useBookings(activeTripId);
-
-  // Constraint state
-  const [budgetStyle, setBudgetStyle] = useState<string | null>(null);
-  const [customBudget, setCustomBudget] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [intensity, setIntensity] = useState<"relaxed" | "balanced" | "packed" | null>(null);
-  const [showConstraints, setShowConstraints] = useState(true);
 
   const buildConstraints = (): PlanningConstraints => {
     const c: PlanningConstraints = {};
@@ -439,7 +440,7 @@ export function PlanningScreen() {
       <div className="px-5">
         <button
           type="button"
-          onClick={() => setShowConstraints((v) => !v)}
+          onClick={() => setShowConstraints(!showConstraints)}
           className="flex items-center gap-2 text-xs font-medium text-text-secondary mb-2"
         >
           <svg
@@ -656,10 +657,7 @@ export function PlanningScreen() {
           <div className="px-5">
             <button
               type="button"
-              onClick={() => {
-                setResult(null);
-                setQuery("");
-              }}
+              onClick={() => resetPlanning()}
               className="text-xs text-primary font-medium"
             >
               &larr; Back to destinations
