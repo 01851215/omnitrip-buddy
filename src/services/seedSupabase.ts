@@ -141,10 +141,11 @@ export async function seedSupabaseData(userId: string, displayName: string) {
 
   // Travel Profile
   await supabase.from("travel_profiles").insert({
-    user_id: userId, pace_preference: 0.35,
-    budget_style: { stays: 0.4, food: 0.25, transport: 0.1, experiences: 0.2, essentials: 0.05 },
-    activity_preferences: { nature: 0.8, culture: 0.7, food: 0.6, nightlife: 0.2, adventure: 0.5 },
-    time_of_day_pattern: { morningActivity: 0.7, eveningActivity: 0.3 },
+    user_id: userId,
+    pace_preference: 3,
+    budget_style: "moderate",
+    activity_preferences: ["nature", "culture", "food", "adventure"],
+    time_of_day_pattern: "morning",
     cuisine_preferences: ["Japanese", "Indonesian", "Thai", "Mediterranean"],
     avoidances: ["crowded tourist traps", "chain restaurants"],
   });
@@ -156,10 +157,14 @@ export async function seedSupabaseData(userId: string, displayName: string) {
     { user_id: userId, title: "Nordic Fjord Route", description: "Coastal Norway by train — Bergen to Tromsø via Lofoten.", cover_image: "https://images.unsplash.com/photo-1520769669658-f07657f5a307?w=800&q=80" },
   ]);
 
-  // Update profile with OmniTrip fields
-  await supabase.from("profiles").update({
+  // Upsert profile — works whether or not trigger already created the row
+  await supabase.from("profiles").upsert({
+    id: userId,
+    email: "",
+    username: displayName.toLowerCase().replace(/\s+/g, "_") || "traveller",
     display_name: displayName,
+    buddy_name: "OmniBuddy",
     age: 24,
     bio: "Solo explorer chasing quiet mornings and local flavours.",
-  }).eq("id", userId);
+  }, { onConflict: "id" });
 }

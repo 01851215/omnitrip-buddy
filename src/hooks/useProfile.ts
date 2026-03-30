@@ -129,15 +129,13 @@ export function useProfile() {
 
       dbFields.updated_at = new Date().toISOString();
 
-      // Use update (row already exists from seeding/signup)
+      // Upsert handles both missing rows (new users) and existing rows
       const { error } = await supabase
         .from("profiles")
-        .update(dbFields)
-        .eq("id", user.id);
+        .upsert({ id: user.id, ...dbFields }, { onConflict: "id" });
 
       if (error) {
         console.error("Failed to update profile:", error);
-        // Revert optimistic update by refetching
         const { data } = await supabase.from("profiles").select("*").eq("id", user.id).single();
         if (data) setProfile(rowToProfile(data));
       }
