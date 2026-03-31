@@ -1,22 +1,33 @@
-// Voice pipeline: STT → ChatGPT → TTS with Buddy mood transitions
+// Voice pipeline: STT → ChatGPT → TTS with personality-adapted Buddy
 
-import { startListening, stopListening } from "./speech";
+import { startListening, stopListening, requestMicPermission } from "./speech";
 import { speak, stop as stopTTS } from "./tts";
 import { callChatGPT } from "./chatgpt";
 import { useVoiceStore } from "../stores/voiceStore";
 import { useBuddyStore } from "../stores/buddyStore";
+import { useLocationStore } from "../stores/locationStore";
+import { useProfileStore } from "../stores/profileStore";
+import {
+  buildSystemPrompt,
+  extractAction,
+  actionToRoute,
+  isNearbyAction,
+  type PersonalityContext,
+  type BuddyTone,
+} from "./buddyPersonality";
+import type { UserHistory } from "../hooks/useUserHistory";
 
 // Demo responses when no API key is configured
 const demoResponses: Record<string, string> = {
   default:
     "I'd love to help you with that! Based on your travel style, I think we can find something really special. Want me to look into some options?",
-  plan: "Great idea! I know you prefer quieter spots with local character. How about I sketch out a route that avoids the tourist crowds? I'll factor in your pace preference too.",
+  plan: "Great idea! I know you prefer quieter spots with local character. How about I sketch out a route that avoids the tourist crowds?",
   budget:
-    "You're doing well on your budget! You've spent a bit more on food than planned, but that's because you've been discovering incredible local restaurants. I'd say that's money well spent.",
+    "You're doing well on your budget! You've spent a bit more on food than planned, but those local restaurants were worth it.",
   calendar:
-    "Looking at your schedule, I notice you have a conflict tomorrow morning. I'd suggest moving the temple visit to the afternoon — the light is actually more beautiful then, and it'll be less crowded.",
+    "Looking at your schedule, I notice you have a conflict tomorrow morning. I'd suggest moving the temple visit to the afternoon.",
   weather:
-    "The forecast looks gorgeous for the next three days! Perfect for that hike we talked about. I'd recommend going tomorrow morning when it's coolest.",
+    "The forecast looks gorgeous for the next three days! Perfect for that hike we talked about.",
 };
 
 function getDemoResponse(transcript: string): string {
@@ -32,17 +43,59 @@ function getDemoResponse(transcript: string): string {
   return demoResponses.default;
 }
 
-async function getChatGPTResponse(transcript: string): Promise<string> {
-  const systemPrompt =
-    "You are OmniBuddy, a warm, emotionally intelligent travel companion. You're friendly, concise, and speak like a caring friend — not an AI assistant. Keep responses under 3 sentences.";
+/** Build personality context from current stores */
+function getPersonalityContext(history: UserHistory | null): PersonalityContext {
+  const profile = useProfileStore.getState().profile;
+  const travelProfile = useProfileStore.getState().travelProfile;
+  const loc = useLocationStore.getState();
 
-  const response = await callChatGPT(systemPrompt, transcript, 200);
-  return response ?? getDemoResponse(transcript);
+  const buddySettings = travelProfile?.buddySettings ?? {};
+  const tone = (buddySettings as Record<string, string>).tone as BuddyTone | undefined;
+
+  return {
+    buddyName: profile?.buddyName || "OmniBuddy",
+    tone: tone ?? "warm",
+    history,
+    locationContext: loc.lat && loc.lng ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : undefined,
+  };
 }
 
-export function startVoiceSession(): void {
+async function getChatGPTResponse(
+  transcript: string,
+  history: UserHistory | null,
+): Promise<{ text: string; action: string | null }> {
+  const ctx = getPersonalityContext(history);
+  const systemPrompt = buildSystemPrompt(ctx);
+
+  const response = await callChatGPT(systemPrompt, transcript, 250);
+  if (!response) return { text: getDemoResponse(transcript), action: null };
+
+  return extractAction(response);
+}
+
+/** Navigation callback — set by the component that starts the session */
+let onNavigate: ((route: string) => void) | null = null;
+let onNearbySearch: ((action: string) => void) | null = null;
+
+export interface VoiceSessionOptions {
+  history?: UserHistory | null;
+  onNavigate?: (route: string) => void;
+  onNearbySearch?: (action: string) => void;
+}
+
+export async function startVoiceSession(options?: VoiceSessionOptions): Promise<void> {
   const voice = useVoiceStore.getState();
   const buddy = useBuddyStore.getState();
+
+  onNavigate = options?.onNavigate ?? null;
+  onNearbySearch = options?.onNearbySearch ?? null;
+
+  // Request mic permission first
+  const perm = await requestMicPermission();
+  if (perm === "denied") {
+    voice.setError("Microphone access denied. Please allow microphone in browser settings.");
+    return;
+  }
 
   voice.reset();
   voice.openOverlay();
@@ -58,13 +111,28 @@ export function startVoiceSession(): void {
         voice.setState("processing");
         buddy.setMood("thinking");
 
-        const response = await getChatGPTResponse(transcript);
+        const { text, action } = await getChatGPTResponse(
+          transcript,
+          options?.history ?? null,
+        );
 
-        voice.setBuddyResponse(response);
+        voice.setBuddyResponse(text);
         voice.setState("speaking");
         buddy.setMood("excited");
 
-        await speak(response);
+        await speak(text);
+
+        // Handle extracted action
+        if (action) {
+          if (isNearbyAction(action) && onNearbySearch) {
+            onNearbySearch(action);
+          } else {
+            const route = actionToRoute(action);
+            if (route && onNavigate) {
+              onNavigate(route);
+            }
+          }
+        }
 
         voice.setState("idle");
         buddy.setMood("idle");
@@ -73,13 +141,15 @@ export function startVoiceSession(): void {
     (error) => {
       voice.setError(error);
       buddy.setMood("idle");
-    }
+    },
   );
 }
 
 export function stopVoiceSession(): void {
   stopListening();
   stopTTS();
+  onNavigate = null;
+  onNearbySearch = null;
   useVoiceStore.getState().closeOverlay();
   useBuddyStore.getState().setMood("idle");
 }

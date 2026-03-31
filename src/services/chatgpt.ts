@@ -58,14 +58,17 @@ export async function callChatGPT(
 
 /**
  * Generate a contextual POI storytelling narration using ChatGPT.
+ * If a personalityPrompt is provided, it overrides the default system prompt.
  */
 export async function generatePOINarration(
   poiName: string,
   poiCategory: string,
   distance: number,
   userPreferences?: string,
+  personalityPrompt?: string,
 ): Promise<string> {
-  const systemPrompt = `You are OmniBuddy, a warm, emotionally intelligent travel companion. Generate a short, engaging, conversational narration (2-3 sentences) about a nearby point of interest. Sound like a knowledgeable friend whispering a great tip. Be specific and evocative.`;
+  const systemPrompt = personalityPrompt ??
+    `You are OmniBuddy, a warm, emotionally intelligent travel companion. Generate a short, engaging, conversational narration (2-3 sentences) about a nearby point of interest. Sound like a knowledgeable friend whispering a great tip. Be specific and evocative.`;
 
   const userMsg = `Nearby place: "${poiName}" (${poiCategory}), ${distance}m away.${userPreferences ? ` User preferences: ${userPreferences}` : ""} Generate a brief, enticing narration.`;
 

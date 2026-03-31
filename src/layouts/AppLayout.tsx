@@ -7,8 +7,11 @@ import { ProactiveAlert } from "../components/BuddyOverlay/ProactiveAlert";
 import { HandsFreeToggle } from "../components/HandsFreeMode/HandsFreeToggle";
 import { startAlertEngine, stopAlertEngine } from "../services/proactiveAlerts";
 import { initLocationPermission } from "../services/location";
+import { useUserHistory } from "../hooks/useUserHistory";
 
 export function AppLayout() {
+  const { history } = useUserHistory();
+
   useEffect(() => {
     initLocationPermission();
     startAlertEngine();
@@ -21,9 +24,9 @@ export function AppLayout() {
         <Outlet />
       </main>
       <BuddyContainer />
-      <BuddyPanel />
+      <BuddyPanel history={history} />
       <ProactiveAlert />
-      <HandsFreeToggle />
+      <HandsFreeToggle history={history} />
       <BottomNav />
     </div>
   );

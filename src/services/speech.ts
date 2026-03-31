@@ -10,7 +10,26 @@ export function isSupported(): boolean {
   return "webkitSpeechRecognition" in window || "SpeechRecognition" in window;
 }
 
-export function startListening(onResult: SpeechCallback, onError: ErrorCallback): void {
+/**
+ * Explicitly request microphone permission from the browser.
+ * Returns "granted" | "denied" | "prompt".
+ */
+export async function requestMicPermission(): Promise<"granted" | "denied" | "prompt"> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Got permission — stop the stream immediately (we just needed the prompt)
+    stream.getTracks().forEach((t) => t.stop());
+    return "granted";
+  } catch {
+    return "denied";
+  }
+}
+
+export function startListening(
+  onResult: SpeechCallback,
+  onError: ErrorCallback,
+  options?: { continuous?: boolean },
+): void {
   if (!isSupported()) {
     onError("Speech recognition not supported in this browser");
     return;
@@ -19,7 +38,7 @@ export function startListening(onResult: SpeechCallback, onError: ErrorCallback)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   recognition = new SR();
-  recognition.continuous = false;
+  recognition.continuous = options?.continuous ?? false;
   recognition.interimResults = true;
   recognition.lang = "en-US";
 
@@ -37,6 +56,11 @@ export function startListening(onResult: SpeechCallback, onError: ErrorCallback)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recognition.onerror = (event: any) => {
     if (event.error === "no-speech") {
+      // In continuous mode, restart instead of erroring
+      if (options?.continuous && recognition) {
+        try { recognition.start(); } catch { /* already running */ }
+        return;
+      }
       onError("No speech detected. Try again.");
     } else if (event.error === "not-allowed") {
       onError("Microphone access denied. Please allow microphone in browser settings.");
@@ -46,15 +70,20 @@ export function startListening(onResult: SpeechCallback, onError: ErrorCallback)
   };
 
   recognition.onend = () => {
-    // Natural end of recognition
+    // In continuous mode, auto-restart when recognition ends naturally
+    if (options?.continuous && recognition) {
+      try { recognition.start(); } catch { /* already running or stopped */ }
+    }
   };
 
   recognition.start();
 }
 
 export function stopListening(): void {
-  if (recognition) {
-    recognition.stop();
-    recognition = null;
+  const ref = recognition;
+  recognition = null;
+  if (ref) {
+    ref.onend = null; // Prevent auto-restart in continuous mode
+    ref.stop();
   }
 }

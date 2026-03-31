@@ -482,6 +482,74 @@ Search trip → AI suggests routes → Select route → "Add to Trip"
 
 ---
 
+---
+
+### Session 10 — LLM-Powered Adaptive Voice Agent & Precise Location (COMPLETE)
+
+Buddy's hands-free mode is now a fully functional voice agent. Every conversation is personalised to the user's tone setting (warm / energetic / calm), travel history, current location, and time of day. The voice loop no longer freezes after the first command.
+
+**What was done:**
+
+1. **`src/services/buddyPersonality.ts`** — New adaptive personality engine:
+   - `buildSystemPrompt(ctx)` — builds a dynamic ChatGPT system prompt from `buddyName`, `tone`, travel history, location, vibe archetype, and time-of-day flavour
+   - `extractAction(response)` — parses `[ACTION:xxx]` keywords from ChatGPT responses to drive navigation and POI search without regex intent matching
+   - `actionToRoute()` / `isNearbyAction()` — maps actions to routes or nearby-search handlers
+   - `buildPOINarrationPrompt()` — personality-aware POI storytelling for proactive alerts
+   - Tone modes: **warm** (gentle encouragement), **energetic** (exclamation, high energy), **calm** (measured, no exclamation marks)
+
+2. **`src/services/speech.ts`** — Added `requestMicPermission()` (explicit `getUserMedia` prompt) and `continuous` option for `startListening()` that auto-restarts on end or no-speech errors.
+
+3. **`src/services/voicePipeline.ts`** — Rewritten: uses `buildSystemPrompt()` for personality-adapted responses, extracts actions from responses, fires `onNavigate`/`onNearbySearch` callbacks.
+
+4. **`src/components/BuddyPanel/BuddyPanel.tsx`** — Rewritten: LLM action extraction replaces regex intent detection, personality-aware prompts, requests mic permission before listening, shows user's custom `buddyName` in header.
+
+5. **`src/components/HandsFreeMode/HandsFreeToggle.tsx`** — Major rewrite:
+   - Requests mic permission on toggle-on
+   - `listenCycle` counter pattern — each command spawns a fresh STT instance (fixes freeze-after-first-command bug caused by stale nested callbacks)
+   - Stops STT before TTS to prevent audio feedback loop, restarts after response
+   - Extracts `[ACTION:xxx]` to navigate or trigger POI search; exits hands-free on navigation
+   - Shows live transcript + last Buddy response on the dimmed overlay
+   - Waveform animates only when actively listening
+
+6. **`src/services/chatgpt.ts`** — `generatePOINarration()` accepts optional `personalityPrompt` to override the hardcoded warm-OmniBuddy system prompt.
+
+7. **`src/services/proactiveAlerts.ts`** — Builds a personality-aware narration prompt via `buildPOINarrationPrompt()` and passes it to `generatePOINarration()`.
+
+8. **`src/services/location.ts`** — Fixed imprecise location (was reporting 4km off):
+   - `watchPosition`: `enableHighAccuracy: false` → `true`, `maximumAge: 60000` → `5000`
+   - Initial request timeout: 10s → 15s
+   - Fallback cache reduced from 300s → 30s
+
+9. **`src/layouts/AppLayout.tsx`** — Wires `useUserHistory()` into both `<BuddyPanel>` and `<HandsFreeToggle>` so personality context includes real travel history.
+
+**Hands-free voice loop:**
+```
+Toggle on → Request mic permission → Acquire Wake Lock
+  → Continuous STT (Web Speech API)
+  → User speaks → Stop STT (prevent feedback)
+  → buildSystemPrompt(tone + history + location)
+  → callChatGPT → extractAction()
+  → speak(response) via ElevenLabs / TTS
+  → If [ACTION:plan_trip] → exit hands-free, navigate
+  → If [ACTION:nearby_food] → stay, POI engine handles
+  → Increment listenCycle → fresh STT instance → loop
+```
+
+**Figma workflow diagram:** [Hands-Free Voice Agent — Session 10](https://www.figma.com/online-whiteboard/create-diagram/4ee6f6de-aec4-415b-af97-4a7fd68ffa5d)
+
+**Files changed:**
+- `src/services/buddyPersonality.ts` — new: adaptive personality engine
+- `src/services/speech.ts` — mic permission + continuous mode
+- `src/services/voicePipeline.ts` — personality-aware, action-driven
+- `src/components/BuddyPanel/BuddyPanel.tsx` — LLM actions + personality
+- `src/components/HandsFreeMode/HandsFreeToggle.tsx` — full voice agent rewrite
+- `src/services/chatgpt.ts` — optional personality prompt for POI narration
+- `src/services/proactiveAlerts.ts` — personality-aware POI narration
+- `src/services/location.ts` — high-accuracy GPS fix
+- `src/layouts/AppLayout.tsx` — user history wired to voice components
+
+---
+
 ## Version
 
-`v0.9.0 — In-app booking with affiliate deep-links, deals panel & calendar CTA`
+`v1.0.0 — LLM-powered adaptive voice agent, precise GPS, personality-aware Buddy`

@@ -3,14 +3,24 @@ import { useNavigate } from "react-router-dom";
 import { useBuddyPanelStore } from "../../stores/buddyPanelStore";
 import { useLocationStore } from "../../stores/locationStore";
 import { useBuddyStore } from "../../stores/buddyStore";
+import { useProfileStore } from "../../stores/profileStore";
 import { Buddy } from "../Buddy";
 import { ChatFeed } from "./ChatFeed";
 import { POIFeed } from "./POIFeed";
 import { QuickActions } from "./QuickActions";
 import { PanelInput } from "./PanelInput";
-import { startListening, stopListening } from "../../services/speech";
+import { startListening, stopListening, requestMicPermission } from "../../services/speech";
 import { speak } from "../../services/tts";
 import { callChatGPT } from "../../services/chatgpt";
+import {
+  buildSystemPrompt,
+  extractAction,
+  actionToRoute,
+  isNearbyAction,
+  type BuddyTone,
+  type PersonalityContext,
+} from "../../services/buddyPersonality";
+import type { UserHistory } from "../../hooks/useUserHistory";
 
 const demoResponses: Record<string, string> = {
   default:
@@ -20,7 +30,7 @@ const demoResponses: Record<string, string> = {
   "Things to do":
     "The Campuhan Ridge Walk is nearby — a beautiful hillside path between two valleys. Great for a slow-paced morning stroll!",
   "Hidden gems":
-    "I know a quiet little café overlooking the rice terraces, just 320m away. Most tourists miss it completely!",
+    "I know a quiet little cafe overlooking the rice terraces, just 320m away. Most tourists miss it completely!",
   "Check budget":
     "You're slightly over on food, but well on track for stays. Overall you're at 68% of your planned budget with 40% of your trip left.",
   "What's next?":
@@ -39,45 +49,52 @@ function getDemoResponse(text: string): string {
   return demoResponses.default;
 }
 
-interface Intent {
-  route: string;
-  confirmation: string;
+function getPersonalityContext(history: UserHistory | null): PersonalityContext {
+  const profile = useProfileStore.getState().profile;
+  const travelProfile = useProfileStore.getState().travelProfile;
+  const loc = useLocationStore.getState();
+
+  const buddySettings = travelProfile?.buddySettings ?? {};
+  const tone = (buddySettings as Record<string, string>).tone as BuddyTone | undefined;
+
+  return {
+    buddyName: profile?.buddyName || "OmniBuddy",
+    tone: tone ?? "warm",
+    history,
+    locationContext: loc.lat && loc.lng ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : undefined,
+    nearbyPOIs: loc.nearbyPOIs.length > 0 ? loc.nearbyPOIs : undefined,
+    movingSpeed: loc.speed,
+    currentScreen: "buddy_panel",
+  };
 }
 
-function detectIntent(text: string): Intent | null {
-  const lower = text.toLowerCase();
-  if (/\b(plan|create|start|new)\b.*\b(trip|journey|travel|vacation)\b/.test(lower) || /\blet'?s go to\b/.test(lower))
-    return { route: "/plan", confirmation: "Opening the trip planner for you!" };
-  if (/\b(add|log|record|track)\b.*\b(expense|spending|cost|money)\b/.test(lower))
-    return { route: "/budget", confirmation: "Opening the budget tracker so you can log that." };
-  if (/\b(show|open|check|view)\b.*\b(calendar|schedule|agenda)\b/.test(lower) || /\bwhat'?s\b.*\btoday\b/.test(lower))
-    return { route: "/calendar", confirmation: "Here's your calendar!" };
-  if (/\b(show|open|view)\b.*\b(trip|journey|footprint|past)\b/.test(lower) || /\bmy (trip|journeys)\b/.test(lower))
-    return { route: "/footprints", confirmation: "Showing your journeys!" };
-  if (/\b(show|open|view|edit)\b.*\b(profile|settings|preferences)\b/.test(lower))
-    return { route: "/profile", confirmation: "Opening your profile settings." };
-  if (/\b(go|take me|navigate)\b.*\b(home|dashboard)\b/.test(lower))
-    return { route: "/home", confirmation: "Taking you home!" };
-  return null;
+async function getResponse(
+  text: string,
+  history: UserHistory | null,
+): Promise<{ text: string; action: string | null }> {
+  const ctx = getPersonalityContext(history);
+  const systemPrompt = buildSystemPrompt(ctx);
+
+  const response = await callChatGPT(systemPrompt, text, 250);
+  if (!response) return { text: getDemoResponse(text), action: null };
+
+  return extractAction(response);
 }
 
-async function getResponse(text: string, locationContext?: string): Promise<string> {
-  const systemPrompt =
-    `You are OmniBuddy, a warm, emotionally intelligent travel companion. You're friendly, concise, and speak like a caring friend. Keep responses under 3 sentences.${locationContext ? ` The user is currently located at: ${locationContext}.` : ""}`;
-
-  const response = await callChatGPT(systemPrompt, text, 200);
-  return response ?? getDemoResponse(text);
+interface BuddyPanelProps {
+  history?: UserHistory | null;
 }
 
-export function BuddyPanel() {
+export function BuddyPanel({ history }: BuddyPanelProps) {
   const { isOpen, messages, isProcessing, isListening, close, addMessage, setProcessing, setListening } =
     useBuddyPanelStore();
   const nearbyPOIs = useLocationStore((s) => s.nearbyPOIs);
-  const lat = useLocationStore((s) => s.lat);
-  const lng = useLocationStore((s) => s.lng);
   const setMood = useBuddyStore((s) => s.setMood);
+  const profile = useProfileStore((s) => s.profile);
   const navigate = useNavigate();
   const feedRef = useRef<HTMLDivElement>(null);
+
+  const buddyName = profile?.buddyName || "OmniBuddy";
 
   // Auto-scroll chat on new message
   useEffect(() => {
@@ -94,35 +111,15 @@ export function BuddyPanel() {
       timestamp: Date.now(),
     });
 
-    // Check for navigation intents before calling ChatGPT
-    const intent = detectIntent(text);
-    if (intent) {
-      addMessage({
-        id: `buddy-${Date.now()}`,
-        role: "buddy",
-        text: intent.confirmation,
-        timestamp: Date.now(),
-      });
-      speak(intent.confirmation).catch(() => {});
-      setMood("excited");
-      setTimeout(() => {
-        close();
-        navigate(intent.route);
-        setMood("idle");
-      }, 800);
-      return;
-    }
-
     setProcessing(true);
     setMood("thinking");
 
-    const locationContext = lat && lng ? `${lat.toFixed(4)}, ${lng.toFixed(4)}` : undefined;
-    const response = await getResponse(text, locationContext);
+    const { text: responseText, action } = await getResponse(text, history ?? null);
 
     addMessage({
       id: `buddy-${Date.now()}`,
       role: "buddy",
-      text: response,
+      text: responseText,
       timestamp: Date.now(),
     });
 
@@ -130,13 +127,42 @@ export function BuddyPanel() {
     setMood("idle");
 
     // TTS
-    speak(response).catch(() => {});
+    speak(responseText).catch(() => {});
+
+    // Handle LLM-extracted action
+    if (action) {
+      if (isNearbyAction(action)) {
+        // POI search actions stay in panel — could trigger a location search
+      } else {
+        const route = actionToRoute(action);
+        if (route) {
+          setMood("excited");
+          setTimeout(() => {
+            close();
+            navigate(route);
+            setMood("idle");
+          }, 800);
+        }
+      }
+    }
   };
 
-  const handleMicToggle = () => {
+  const handleMicToggle = async () => {
     if (isListening) {
       stopListening();
       setListening(false);
+      return;
+    }
+
+    // Request mic permission before starting
+    const perm = await requestMicPermission();
+    if (perm === "denied") {
+      addMessage({
+        id: `buddy-${Date.now()}`,
+        role: "buddy",
+        text: "I need microphone access to listen. Please allow microphone permission in your browser settings.",
+        timestamp: Date.now(),
+      });
       return;
     }
 
@@ -151,7 +177,7 @@ export function BuddyPanel() {
       },
       () => {
         setListening(false);
-      }
+      },
     );
   };
 
@@ -167,7 +193,7 @@ export function BuddyPanel() {
             <Buddy state={isProcessing ? "thinking" : "happy"} size="mini" mode="video" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold">OmniBuddy</p>
+            <p className="text-sm font-semibold">{buddyName}</p>
             <p className="text-[10px] text-text-muted">
               {isProcessing ? "Thinking..." : isListening ? "Listening..." : "Your travel companion"}
             </p>

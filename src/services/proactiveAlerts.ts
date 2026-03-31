@@ -2,9 +2,11 @@
 // Only triggers when: high-confidence match + <200m + user walking (not in vehicle)
 
 import { useLocationStore } from "../stores/locationStore";
+import { useProfileStore } from "../stores/profileStore";
 import { fetchNearbyPOIs } from "./poi";
 import { useBuddyStore } from "../stores/buddyStore";
 import { generatePOINarration } from "./chatgpt";
+import { buildPOINarrationPrompt, type BuddyTone } from "./buddyPersonality";
 import { speak } from "./tts";
 
 const MAX_PROXIMITY = 200; // meters
@@ -96,11 +98,24 @@ async function checkForAlerts(): Promise<void> {
   // Pick the closest one
   const best = candidates.sort((a, b) => a.distance - b.distance)[0];
 
+  // Build personality-aware narration prompt
+  const profile = useProfileStore.getState().profile;
+  const travelProfile = useProfileStore.getState().travelProfile;
+  const buddySettings = travelProfile?.buddySettings ?? {};
+  const tone = (buddySettings as Record<string, string>).tone as BuddyTone | undefined;
+  const personalityPrompt = buildPOINarrationPrompt({
+    buddyName: profile?.buddyName || "OmniBuddy",
+    tone: tone ?? "warm",
+    history: null,
+  });
+
   // Generate AI narration for the POI
   const narration = await generatePOINarration(
     best.name,
     best.category,
     best.distance,
+    undefined,
+    personalityPrompt,
   );
   best.buddyMessage = narration;
 

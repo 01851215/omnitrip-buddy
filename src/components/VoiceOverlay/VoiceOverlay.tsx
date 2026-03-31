@@ -96,7 +96,7 @@ export function VoiceOverlay() {
           {state === "idle" || state === "speaking" ? (
             <button
               type="button"
-              onClick={startVoiceSession}
+              onClick={() => startVoiceSession()}
               className="w-16 h-16 rounded-full bg-primary text-white flex items-center justify-center shadow-lg hover:bg-primary-light transition-colors"
               aria-label="Start listening"
             >

@@ -64,10 +64,10 @@ export async function requestLocation(): Promise<{ lat: number; lng: number } | 
           (err2) => {
             resolve(err2.code === err2.PERMISSION_DENIED ? "denied" : null);
           },
-          { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 },
+          { enableHighAccuracy: false, timeout: 20000, maximumAge: 30000 },
         );
       },
-      { enableHighAccuracy: true, timeout: 10000 },
+      { enableHighAccuracy: true, timeout: 15000 },
     );
   });
 
@@ -105,7 +105,7 @@ function startWatching(): void {
       useLocationStore.getState().setPosition(pos.coords.latitude, pos.coords.longitude);
     },
     () => {},
-    { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
   );
 }
 
