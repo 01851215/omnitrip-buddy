@@ -15,6 +15,7 @@ interface LocationState {
   permission: "prompt" | "granted" | "denied";
   lat: number | null;
   lng: number | null;
+  locationName: string | null; // human-readable, e.g. "Wembley, London"
   speed: number | null; // m/s, derived from consecutive positions
   previousPosition: { lat: number; lng: number; timestamp: number } | null;
   nearbyPOIs: POI[];
@@ -27,6 +28,7 @@ interface LocationState {
 
   setPermission: (p: "prompt" | "granted" | "denied") => void;
   setPosition: (lat: number, lng: number) => void;
+  setLocationName: (name: string | null) => void;
   clearPosition: () => void;
   setNearbyPOIs: (pois: POI[]) => void;
   setPendingAlert: (poi: POI | null) => void;
@@ -56,6 +58,7 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   permission: "prompt",
   lat: null,
   lng: null,
+  locationName: null,
   speed: null,
   previousPosition: null,
   nearbyPOIs: [],
@@ -67,7 +70,8 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   alertFrequency: 3,
 
   setPermission: (permission) => set({ permission }),
-  clearPosition: () => set({ lat: null, lng: null, speed: null, previousPosition: null }),
+  setLocationName: (locationName) => set({ locationName }),
+  clearPosition: () => set({ lat: null, lng: null, locationName: null, speed: null, previousPosition: null }),
   setPosition: (lat, lng) => {
     const prev = get().previousPosition;
     let speed: number | null = null;

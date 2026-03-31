@@ -57,12 +57,15 @@ function getPersonalityContext(history: UserHistory | null): PersonalityContext 
   const buddySettings = travelProfile?.buddySettings ?? {};
   const tone = (buddySettings as Record<string, string>).tone as BuddyTone | undefined;
 
+  // Filter out demo POIs (prefixed with "demo-") — they're hardcoded Bali data
+  const realPOIs = loc.nearbyPOIs.filter((p) => !p.id.startsWith("demo-"));
+
   return {
     buddyName: profile?.buddyName || "OmniBuddy",
     tone: tone ?? "warm",
     history,
-    locationContext: loc.lat && loc.lng ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : undefined,
-    nearbyPOIs: loc.nearbyPOIs.length > 0 ? loc.nearbyPOIs : undefined,
+    locationContext: loc.locationName ?? (loc.lat && loc.lng ? `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}` : undefined),
+    nearbyPOIs: realPOIs.length > 0 ? realPOIs : undefined,
     movingSpeed: loc.speed,
     currentScreen: "buddy_panel",
   };

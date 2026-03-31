@@ -81,6 +81,7 @@ export async function requestLocation(): Promise<{ lat: number; lng: number } | 
   if (browserResult) {
     store.setPermission("granted");
     store.setPosition(browserResult.lat, browserResult.lng);
+    maybeReverseGeocode(browserResult.lat, browserResult.lng);
     startWatching();
     return browserResult;
   }
@@ -97,12 +98,29 @@ export async function requestLocation(): Promise<{ lat: number; lng: number } | 
   return null;
 }
 
+let lastGeocodedPos: { lat: number; lng: number } | null = null;
+
+function maybeReverseGeocode(lat: number, lng: number): void {
+  // Only re-geocode if moved more than ~500m from last known named position
+  if (lastGeocodedPos) {
+    const dlat = Math.abs(lat - lastGeocodedPos.lat);
+    const dlng = Math.abs(lng - lastGeocodedPos.lng);
+    if (dlat < 0.005 && dlng < 0.005) return; // ~500m threshold
+  }
+  lastGeocodedPos = { lat, lng };
+  reverseGeocode(lat, lng).then((name) => {
+    if (name) useLocationStore.getState().setLocationName(name);
+  }).catch(() => {});
+}
+
 function startWatching(): void {
   if (watchId !== null) return;
 
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
-      useLocationStore.getState().setPosition(pos.coords.latitude, pos.coords.longitude);
+      const { latitude: lat, longitude: lng } = pos.coords;
+      useLocationStore.getState().setPosition(lat, lng);
+      maybeReverseGeocode(lat, lng);
     },
     () => {},
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
@@ -113,5 +131,33 @@ export function stopPolling(): void {
   if (watchId !== null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
+  }
+}
+
+/**
+ * Reverse geocode lat/lng to a human-readable place name using
+ * Nominatim (OpenStreetMap) — free, no API key required.
+ * Returns e.g. "Wembley, London" or "Ubud, Bali".
+ */
+export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=12`,
+      {
+        headers: { "Accept-Language": "en", "User-Agent": "OmniTrip/1.0" },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data.address ?? {};
+    // Build "Neighbourhood, City" or "Town, Country"
+    const parts = [
+      a.suburb || a.neighbourhood || a.quarter || a.village || a.town,
+      a.city || a.county || a.state,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : data.display_name?.split(",").slice(0, 2).join(",").trim() ?? null;
+  } catch {
+    return null;
   }
 }

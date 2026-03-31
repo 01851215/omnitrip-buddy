@@ -50,8 +50,11 @@ const demoPOIs: POI[] = [
 
 export async function fetchNearbyPOIs(lat: number, lng: number): Promise<POI[]> {
   if (!FOURSQUARE_API_KEY) {
-    // Return demo POIs with slight randomization
-    return demoPOIs.slice(0, 2 + Math.floor(Math.random() * 3));
+    // Return demo POIs flagged as demo so callers can choose to exclude them
+    return demoPOIs.slice(0, 2 + Math.floor(Math.random() * 3)).map((p) => ({
+      ...p,
+      id: `demo-${p.id}`, // prefix so callers can identify demo entries
+    }));
   }
 
   try {
