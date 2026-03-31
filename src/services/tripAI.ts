@@ -303,10 +303,151 @@ ${templateContext}`;
     }
   }
 
-  // Demo fallback — keyword matching
+  // Demo fallback — try query-aware route, then template matching
+  const fallbackRoute = buildQueryFallbackRoute(query, constraints);
+  if (fallbackRoute) {
+    return {
+      routes: [fallbackRoute],
+      insight: demoInsightForQuery(query),
+    };
+  }
   return {
     routes: matched.map(templateToRoute),
     insight: demoInsightForQuery(query),
+  };
+}
+
+// ── Query-aware fallback ───────────────────────────────
+
+const KNOWN_CITIES: Record<string, { country: string; lat: number; lng: number; tz: string }> = {
+  london: { country: "United Kingdom", lat: 51.5074, lng: -0.1278, tz: "Europe/London" },
+  paris: { country: "France", lat: 48.8566, lng: 2.3522, tz: "Europe/Paris" },
+  rome: { country: "Italy", lat: 41.9028, lng: 12.4964, tz: "Europe/Rome" },
+  barcelona: { country: "Spain", lat: 41.3874, lng: 2.1686, tz: "Europe/Madrid" },
+  amsterdam: { country: "Netherlands", lat: 52.3676, lng: 4.9041, tz: "Europe/Amsterdam" },
+  berlin: { country: "Germany", lat: 52.52, lng: 13.405, tz: "Europe/Berlin" },
+  vienna: { country: "Austria", lat: 48.2082, lng: 16.3738, tz: "Europe/Vienna" },
+  prague: { country: "Czech Republic", lat: 50.0755, lng: 14.4378, tz: "Europe/Prague" },
+  istanbul: { country: "Turkey", lat: 41.0082, lng: 28.9784, tz: "Europe/Istanbul" },
+  dubai: { country: "UAE", lat: 25.2048, lng: 55.2708, tz: "Asia/Dubai" },
+  tokyo: { country: "Japan", lat: 35.6762, lng: 139.6503, tz: "Asia/Tokyo" },
+  seoul: { country: "South Korea", lat: 37.5665, lng: 126.978, tz: "Asia/Seoul" },
+  bangkok: { country: "Thailand", lat: 13.7563, lng: 100.5018, tz: "Asia/Bangkok" },
+  singapore: { country: "Singapore", lat: 1.3521, lng: 103.8198, tz: "Asia/Singapore" },
+  sydney: { country: "Australia", lat: -33.8688, lng: 151.2093, tz: "Australia/Sydney" },
+  "new york": { country: "United States", lat: 40.7128, lng: -74.006, tz: "America/New_York" },
+  "los angeles": { country: "United States", lat: 34.0522, lng: -118.2437, tz: "America/Los_Angeles" },
+  cairo: { country: "Egypt", lat: 30.0444, lng: 31.2357, tz: "Africa/Cairo" },
+  lisbon: { country: "Portugal", lat: 38.7223, lng: -9.1393, tz: "Europe/Lisbon" },
+  marrakech: { country: "Morocco", lat: 31.6295, lng: -7.9811, tz: "Africa/Casablanca" },
+};
+
+const CITY_ACTIVITIES: Record<string, Array<{ title: string; type: string; estimatedCost: number }>> = {
+  london: [
+    { title: "British Museum", type: "experience", estimatedCost: 0 },
+    { title: "Tower of London", type: "experience", estimatedCost: 30 },
+    { title: "Borough Market food tour", type: "food", estimatedCost: 25 },
+    { title: "Thames river walk", type: "free", estimatedCost: 0 },
+    { title: "Afternoon tea at Sketch", type: "food", estimatedCost: 60 },
+    { title: "Camden Town exploration", type: "experience", estimatedCost: 10 },
+    { title: "West End theatre show", type: "experience", estimatedCost: 50 },
+    { title: "Hyde Park & Kensington Gardens", type: "free", estimatedCost: 0 },
+    { title: "Sky Garden sunset views", type: "experience", estimatedCost: 0 },
+    { title: "Brick Lane street food", type: "food", estimatedCost: 15 },
+    { title: "Tate Modern gallery", type: "experience", estimatedCost: 0 },
+    { title: "Covent Garden & Seven Dials", type: "experience", estimatedCost: 0 },
+  ],
+  paris: [
+    { title: "Louvre Museum", type: "experience", estimatedCost: 17 },
+    { title: "Eiffel Tower summit", type: "experience", estimatedCost: 26 },
+    { title: "Montmartre walking tour", type: "experience", estimatedCost: 15 },
+    { title: "Seine river cruise", type: "experience", estimatedCost: 15 },
+    { title: "Croissant & café breakfast", type: "food", estimatedCost: 12 },
+    { title: "Musée d'Orsay", type: "experience", estimatedCost: 16 },
+  ],
+  tokyo: [
+    { title: "Senso-ji Temple", type: "experience", estimatedCost: 0 },
+    { title: "Tsukiji Outer Market", type: "food", estimatedCost: 20 },
+    { title: "Shibuya Crossing & Harajuku", type: "experience", estimatedCost: 0 },
+    { title: "Ramen tasting tour", type: "food", estimatedCost: 15 },
+    { title: "Meiji Shrine", type: "experience", estimatedCost: 0 },
+    { title: "Akihabara exploration", type: "experience", estimatedCost: 10 },
+  ],
+};
+
+function buildQueryFallbackRoute(
+  query: string,
+  constraints?: PlanningConstraints,
+): RouteSuggestion | null {
+  const q = query.toLowerCase();
+
+  let city: string | null = null;
+  let cityData: (typeof KNOWN_CITIES)[string] | null = null;
+
+  for (const [name, data] of Object.entries(KNOWN_CITIES)) {
+    if (q.includes(name)) {
+      city = name;
+      cityData = data;
+      break;
+    }
+  }
+
+  if (!city || !cityData) return null;
+
+  const daysMatch = q.match(/(\d+)\s*day/i);
+  let days = daysMatch ? parseInt(daysMatch[1], 10) : 3;
+
+  if (constraints?.startDate && constraints?.endDate) {
+    const d = Math.ceil(
+      (new Date(constraints.endDate).getTime() - new Date(constraints.startDate).getTime()) / 86400000,
+    );
+    if (d > 0) days = d;
+  }
+
+  const activities = CITY_ACTIVITIES[city] ??
+    [
+      { title: `Explore ${city.charAt(0).toUpperCase() + city.slice(1)} old town`, type: "experience", estimatedCost: 0 },
+      { title: "Local cuisine tasting", type: "food", estimatedCost: 20 },
+      { title: "Visit iconic landmarks", type: "experience", estimatedCost: 15 },
+      { title: "Wander local markets", type: "food", estimatedCost: 10 },
+    ];
+
+  const intensity = constraints?.intensity ?? "balanced";
+  const perDay = intensity === "relaxed" ? 2 : intensity === "packed" ? 5 : 3;
+  const totalActivities = Math.min(activities.length, days * perDay);
+  const selectedActivities = activities.slice(0, totalActivities);
+
+  const budget = constraints?.budget
+    ? constraints.budget * days
+    : days * 120;
+
+  const cityCapital = city.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+  return {
+    id: `fallback-${city.replace(/\s+/g, "-")}`,
+    title: `${cityCapital}: ${days}-Day Discovery`,
+    description: `${days} days exploring ${cityCapital}'s best sights, local food, and hidden gems.`,
+    duration: `${days} Days`,
+    image: unsplashImage(city),
+    recommended: true,
+    budget: `$${budget.toLocaleString()}`,
+    templateId: "",
+    generatedData: {
+      destinations: [
+        {
+          name: cityCapital,
+          country: cityData.country,
+          days,
+          lat: cityData.lat,
+          lng: cityData.lng,
+          timezone: cityData.tz,
+          coverImage: unsplashImage(city),
+          activities: selectedActivities,
+        },
+      ],
+      totalBudget: budget,
+      duration: days,
+    },
   };
 }
 

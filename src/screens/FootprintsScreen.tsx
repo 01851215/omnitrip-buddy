@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAllTrips, useActiveTrip, useAllDestinations } from "../hooks/useTrips";
+import { useAllTrips, useActiveTrip, useAllDestinations, useCompletedTrips } from "../hooks/useTrips";
 import { useJournalEntries, createJournalEntry } from "../hooks/useFootprints";
 import { useUserHistory } from "../hooks/useUserHistory";
 import { generateVibeAnalysis } from "../services/travelInsights";
@@ -17,6 +17,7 @@ export function FootprintsScreen() {
   const navigate = useNavigate();
   const { trip: activeTrip } = useActiveTrip();
   const { trips: allTrips } = useAllTrips();
+  const { trips: completedTrips } = useCompletedTrips();
   const { entries: journalEntries, refresh: refreshJournal } = useJournalEntries();
   const { destinations: allDestinations } = useAllDestinations();
   const { history, loading: historyLoading } = useUserHistory();
@@ -28,10 +29,10 @@ export function FootprintsScreen() {
   useEffect(() => {
     if (!history || historyLoading || vibeAnalysis) return;
     setVibeLoading(true);
-    generateVibeAnalysis(history).then((result) => {
-      setVibeAnalysis(result);
-      setVibeLoading(false);
-    });
+    generateVibeAnalysis(history)
+      .then((result) => setVibeAnalysis(result))
+      .catch(() => {})
+      .finally(() => setVibeLoading(false));
   }, [history, historyLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const uniqueCountries = new Set(allDestinations.map((d) => d.country).filter(Boolean));
@@ -41,14 +42,14 @@ export function FootprintsScreen() {
 
   // Build polyline from destination coordinates in chronological order
   const polylineCoords: [number, number][] = allDestinations
-    .filter((d) => d.lat && d.lng)
+    .filter((d) => d.lat != null && d.lng != null)
     .map((d) => [d.lat, d.lng]);
   const mapCenter: [number, number] = polylineCoords.length > 0
     ? polylineCoords[Math.floor(polylineCoords.length / 2)]
     : [0, 20];
 
   const mapMarkers = allDestinations
-    .filter((d) => d.lat && d.lng)
+    .filter((d) => d.lat != null && d.lng != null)
     .map((d) => ({ id: d.id, lat: d.lat, lng: d.lng, name: d.name, category: d.country }));
 
   return (
@@ -81,6 +82,31 @@ export function FootprintsScreen() {
           </p>
         </div>
       </div>
+
+      {/* Completed Journeys */}
+      {completedTrips.length > 0 && (
+        <div className="px-5">
+          <h2 className="text-xl font-bold font-serif mb-3">Completed Journeys</h2>
+          <div className="space-y-3">
+            {completedTrips.map((trip) => (
+              <Card key={trip.id} className="!p-0 overflow-hidden">
+                {trip.coverImage && (
+                  <img src={trip.coverImage} alt={trip.title} className="w-full h-28 object-cover" />
+                )}
+                <div className="p-3">
+                  <h3 className="font-semibold text-sm">{trip.title}</h3>
+                  {trip.description && (
+                    <p className="text-xs text-text-secondary mt-0.5 line-clamp-2">{trip.description}</p>
+                  )}
+                  <p className="text-[10px] text-text-muted mt-1">
+                    {trip.startDate} — {trip.endDate}
+                  </p>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Connected Path — Journey Map */}
       <div className="px-5">

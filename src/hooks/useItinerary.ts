@@ -84,8 +84,45 @@ export function useActivities(tripId?: string, destinationId?: string) {
 
   const toggleStatus = useCallback(async (activityId: string, newStatus: "completed" | "skipped" | "planned") => {
     await supabase.from("activities").update({ status: newStatus }).eq("id", activityId);
+
+    const activity = activities.find((a) => a.id === activityId);
+    if (activity && tripId) {
+      const { data: trip } = await supabase.from("trips").select("user_id").eq("id", tripId).single();
+      const userId = trip?.user_id;
+      if (userId) {
+        if (newStatus === "skipped") {
+          await supabase.from("calendar_events")
+            .delete()
+            .eq("user_id", userId)
+            .eq("title", activity.title)
+            .eq("start_time", activity.startTime);
+        } else {
+          const { data: existing } = await supabase.from("calendar_events")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("title", activity.title)
+            .eq("start_time", activity.startTime)
+            .maybeSingle();
+
+          if (!existing) {
+            await supabase.from("calendar_events").insert({
+              user_id: userId,
+              trip_id: tripId,
+              source: "omnitrip",
+              title: activity.title,
+              description: `${activity.type} in ${activity.locationName}`,
+              start_time: activity.startTime,
+              end_time: activity.endTime,
+              type: "travel",
+              conflicts_with: [],
+            });
+          }
+        }
+      }
+    }
+
     setVersion((v) => v + 1);
-  }, []);
+  }, [activities, tripId]);
 
   const addActivity = useCallback(async (activity: {
     tripDayId: string; tripId: string; destinationId: string;

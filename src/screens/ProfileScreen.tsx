@@ -4,8 +4,10 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { ScreenLoader } from "../components/ui/Spinner";
 import { useLocationStore } from "../stores/locationStore";
-import { requestLocation } from "../services/location";
+import { requestLocation, stopPolling } from "../services/location";
 import { useAuthContext } from "../components/auth/AuthProvider";
+import { useProfileStore } from "../stores/profileStore";
+import type { Profile, TravelProfile } from "../stores/profileStore";
 import { useProfile } from "../hooks/useProfile";
 import { TagInput } from "../components/profile/TagInput";
 import { SliderField } from "../components/profile/SliderField";
@@ -16,107 +18,172 @@ const BUDGET_OPTIONS = ["budget", "moderate", "luxury"] as const;
 const TONE_OPTIONS = ["warm", "energetic", "calm"] as const;
 const ALERT_LABELS = ["Rare", "Low", "Normal", "Often", "Frequent"];
 
-function useDebounced<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+function readProfile() { return useProfileStore.getState().profile; }
+function readTravel() { return useProfileStore.getState().travelProfile; }
 
 export function ProfileScreen() {
-  const { permission, quietMode, toggleQuietMode, setAlertFrequency } = useLocationStore();
+  const { permission, lat, lng, quietMode, toggleQuietMode, setAlertFrequency } = useLocationStore();
   const { user, signOut } = useAuthContext();
-  const { profile, travelProfile, loading, updateProfile, updateTravelProfile } = useProfile();
+  const { loading } = useProfile();
+  const profile = useProfileStore((s) => s.profile);
+  const travelProfile = useProfileStore((s) => s.travelProfile);
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-save basic info fields — gate on user edits to avoid overwriting on init
-  const [localName, setLocalName] = useState("");
-  const [localAge, setLocalAge] = useState("");
-  const [localBio, setLocalBio] = useState("");
-  const [localBuddyName, setLocalBuddyName] = useState("");
-  const [initialized, setInitialized] = useState(false);
-  const userEditedBasic = useRef(false);
-  const userEditedBuddy = useRef(false);
+  // Local state initialized from the Zustand store snapshot at mount time.
+  // When the user navigates away and back, the store already has data,
+  // so useState initializers pick up the saved values immediately.
+  const [localName, setLocalName] = useState(() => readProfile()?.displayName ?? "");
+  const [localAge, setLocalAge] = useState(() => { const a = readProfile()?.age; return a != null ? String(a) : ""; });
+  const [localBio, setLocalBio] = useState(() => readProfile()?.bio ?? "");
 
-  // Initialize local state from profile once loaded
+  const [localPace, setLocalPace] = useState(() => readTravel()?.pacePreference ?? 3);
+  const [localBudget, setLocalBudget] = useState(() => readTravel()?.budgetStyle ?? "moderate");
+  const [localCuisines, setLocalCuisines] = useState<string[]>(() => readTravel()?.cuisinePreferences ?? []);
+  const [localAvoidances, setLocalAvoidances] = useState<string[]>(() => readTravel()?.avoidances ?? []);
+
+  const [localQuietMode, setLocalQuietMode] = useState(() => readTravel()?.notificationSettings?.quietMode === true);
+  const [localAlertFrequency, setLocalAlertFrequency] = useState(() => {
+    const v = readTravel()?.notificationSettings?.alertFrequency;
+    return typeof v === "number" ? v : 3;
+  });
+
+  const [localBuddyName, setLocalBuddyName] = useState(() => readProfile()?.buddyName || "OmniBuddy");
+  const [localTone, setLocalTone] = useState(() => (readTravel()?.buddySettings?.tone as string) ?? "warm");
+
+  const [basicStatus, setBasicStatus] = useState<SaveStatus>("idle");
+  const [travelStatus, setTravelStatus] = useState<SaveStatus>("idle");
+  const [notifStatus, setNotifStatus] = useState<SaveStatus>("idle");
+  const [buddyStatus, setBuddyStatus] = useState<SaveStatus>("idle");
+
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Hydrate local state from the store whenever the store data changes.
+  // This covers: initial fetch, post-save re-fetch, and remount.
+  const prevProfileRef = useRef<Profile | null>(null);
+  const prevTravelRef = useRef<TravelProfile | null>(null);
+
   useEffect(() => {
-    if (profile && !initialized) {
+    if (profile && profile !== prevProfileRef.current) {
+      prevProfileRef.current = profile;
       setLocalName(profile.displayName ?? "");
       setLocalAge(profile.age != null ? String(profile.age) : "");
       setLocalBio(profile.bio ?? "");
       setLocalBuddyName(profile.buddyName || "OmniBuddy");
-      setInitialized(true);
     }
-  }, [profile, initialized]);
-
-  // Wrap setters to track when the user actually types
-  const onNameChange = (e: ChangeEvent<HTMLInputElement>) => { userEditedBasic.current = true; setLocalName(e.target.value); };
-  const onAgeChange = (e: ChangeEvent<HTMLInputElement>) => { userEditedBasic.current = true; setLocalAge(e.target.value); };
-  const onBioChange = (e: ChangeEvent<HTMLTextAreaElement>) => { userEditedBasic.current = true; setLocalBio(e.target.value); };
-  const onBuddyNameChange = (e: ChangeEvent<HTMLInputElement>) => { userEditedBuddy.current = true; setLocalBuddyName(e.target.value); };
-
-  // Debounced auto-save for basic info
-  const debouncedName = useDebounced(localName, 800);
-  const debouncedAge = useDebounced(localAge, 800);
-  const debouncedBio = useDebounced(localBio, 800);
-  const debouncedBuddyName = useDebounced(localBuddyName, 800);
+  }, [profile]);
 
   useEffect(() => {
-    if (!userEditedBasic.current || !initialized || !profile) return;
-    if (debouncedName === profile.displayName && (debouncedAge === (profile.age != null ? String(profile.age) : "")) && debouncedBio === profile.bio) return;
-    updateProfile({
-      displayName: debouncedName,
-      age: debouncedAge ? Number(debouncedAge) : null,
-      bio: debouncedBio,
-    });
-  }, [debouncedName, debouncedAge, debouncedBio]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!userEditedBuddy.current || !initialized || !profile) return;
-    if (debouncedBuddyName === (profile.buddyName || "OmniBuddy")) return;
-    updateProfile({ buddyName: debouncedBuddyName });
-  }, [debouncedBuddyName]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleToneChange = useCallback((tone: string) => {
-    updateTravelProfile({
-      buddySettings: { ...(travelProfile?.buddySettings ?? {}), tone },
-    });
-  }, [travelProfile?.buddySettings, updateTravelProfile]);
-
-  // Persist quiet mode to Supabase alongside local toggle
-  const handleToggleQuietMode = useCallback(() => {
-    const newValue = !quietMode;
-    toggleQuietMode();
-    updateTravelProfile({
-      notificationSettings: {
-        ...(travelProfile?.notificationSettings ?? {}),
-        quietMode: newValue,
-      },
-    });
-  }, [quietMode, toggleQuietMode, travelProfile?.notificationSettings, updateTravelProfile]);
-
-  // Restore quiet mode from Supabase on load
-  useEffect(() => {
-    if (travelProfile?.notificationSettings?.quietMode !== undefined) {
-      const saved = travelProfile.notificationSettings.quietMode as boolean;
-      if (saved !== quietMode) {
-        toggleQuietMode();
-      }
+    if (travelProfile && travelProfile !== prevTravelRef.current) {
+      prevTravelRef.current = travelProfile;
+      setLocalPace(travelProfile.pacePreference ?? 3);
+      setLocalBudget(travelProfile.budgetStyle ?? "moderate");
+      setLocalCuisines(travelProfile.cuisinePreferences ?? []);
+      setLocalAvoidances(travelProfile.avoidances ?? []);
+      setLocalTone((travelProfile.buddySettings?.tone as string) ?? "warm");
+      setLocalQuietMode(travelProfile.notificationSettings?.quietMode === true);
+      const af = travelProfile.notificationSettings?.alertFrequency;
+      setLocalAlertFrequency(typeof af === "number" ? af : 3);
     }
-  }, [travelProfile?.notificationSettings?.quietMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [travelProfile]);
 
-  const currentTone = (travelProfile?.buddySettings?.tone as string) ?? "warm";
-  const alertFrequency = (travelProfile?.notificationSettings?.alertFrequency as number) ?? 3;
-
-  const handleAvatarPick = () => {
-    fileInputRef.current?.click();
+  // ── Save handlers ─────────────────────────────────────
+  const flashStatus = (setter: (s: SaveStatus) => void, ok: boolean) => {
+    setter(ok ? "saved" : "error");
+    setTimeout(() => setter("idle"), 2000);
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const store = useProfileStore;
+
+  const handleSaveBasic = useCallback(async () => {
+    if (!user) return;
+    setBasicStatus("saving");
+    const ok = await store.getState().saveProfile(user.id, {
+      displayName: localName,
+      age: localAge ? Number(localAge) : null,
+      bio: localBio,
+    });
+    flashStatus(setBasicStatus, ok);
+  }, [user, localName, localAge, localBio]);
+
+  const handleSaveTravel = useCallback(async () => {
+    if (!user) return;
+    setTravelStatus("saving");
+    const ok = await store.getState().saveTravelProfile(user.id, {
+      pacePreference: localPace,
+      budgetStyle: localBudget,
+      cuisinePreferences: localCuisines,
+      avoidances: localAvoidances,
+    });
+    flashStatus(setTravelStatus, ok);
+  }, [user, localPace, localBudget, localCuisines, localAvoidances]);
+
+  const handleSaveNotif = useCallback(async () => {
+    if (!user) return;
+    setNotifStatus("saving");
+    if (localQuietMode !== quietMode) toggleQuietMode();
+    setAlertFrequency(localAlertFrequency);
+    const ok = await store.getState().saveTravelProfile(user.id, {
+      notificationSettings: {
+        ...(travelProfile?.notificationSettings ?? {}),
+        quietMode: localQuietMode,
+        alertFrequency: localAlertFrequency,
+      },
+    });
+    flashStatus(setNotifStatus, ok);
+  }, [user, localQuietMode, localAlertFrequency, quietMode, toggleQuietMode, setAlertFrequency, travelProfile?.notificationSettings]);
+
+  const handleSaveBuddy = useCallback(async () => {
+    if (!user) return;
+    setBuddyStatus("saving");
+    const ok1 = await store.getState().saveProfile(user.id, { buddyName: localBuddyName });
+    const ok2 = await store.getState().saveTravelProfile(user.id, {
+      buddySettings: { ...(travelProfile?.buddySettings ?? {}), tone: localTone },
+    });
+    flashStatus(setBuddyStatus, ok1 && ok2);
+  }, [user, localBuddyName, localTone, travelProfile?.buddySettings]);
+
+  // ── Location ──────────────────────────────────────────
+  const handleRequestLocation = useCallback(async () => {
+    setLocationLoading(true);
+    setLocationError(null);
+    const result = await requestLocation();
+    setLocationLoading(false);
+
+    if (!result) {
+      const perm = useLocationStore.getState().permission;
+      if (perm === "denied") {
+        setLocationError("Permission denied. Please enable location in your browser settings, then reload the page.");
+      } else {
+        setLocationError("Could not get your location. Make sure location services are enabled on your device and try again.");
+      }
+    }
+  }, []);
+
+  const handleToggleLocation = useCallback(async () => {
+    if (permission === "granted") {
+      stopPolling();
+      useLocationStore.getState().setPermission("prompt");
+      useLocationStore.getState().clearPosition();
+    } else {
+      setLocationLoading(true);
+      setLocationError(null);
+      const result = await requestLocation();
+      setLocationLoading(false);
+      if (!result) {
+        setLocationError("Could not get your location. Make sure location services are enabled on your device and try again.");
+      }
+    }
+  }, [permission]);
+
+  // ── Avatar ────────────────────────────────────────────
+  const handleAvatarPick = () => fileInputRef.current?.click();
+
+  const handleAvatarUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
@@ -124,35 +191,29 @@ export function ProfileScreen() {
     try {
       const ext = file.name.split(".").pop() ?? "jpg";
       const path = `${user.id}/avatar.${ext}`;
-
-      // Upload to Supabase Storage
       const { error: uploadErr } = await supabase.storage
         .from("avatars")
         .upload(path, file, { upsert: true });
-
       if (uploadErr) throw uploadErr;
 
-      // Get public URL
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-      const publicUrl = urlData.publicUrl + "?t=" + Date.now(); // cache bust
-
-      // Save to profile
-      await updateProfile({ avatarUrl: publicUrl });
+      const publicUrl = urlData.publicUrl + "?t=" + Date.now();
+      await store.getState().saveProfile(user.id, { avatarUrl: publicUrl });
     } catch (err) {
       console.error("Avatar upload failed:", err);
     } finally {
       setUploadingAvatar(false);
-      // Reset file input
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const handleLogout = async () => {
+    store.getState().clear();
     await signOut();
     window.location.href = "/";
   };
 
-  if (loading) {
+  if (loading && !profile) {
     return <ScreenLoader message="Loading profile..." />;
   }
 
@@ -167,11 +228,7 @@ export function ProfileScreen() {
           disabled={uploadingAvatar}
         >
           {profile?.avatarUrl ? (
-            <img
-              src={profile.avatarUrl}
-              alt="Avatar"
-              className="w-full h-full object-cover"
-            />
+            <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
             <Buddy state="happy" size="mini" mode="video" />
           )}
@@ -199,7 +256,7 @@ export function ProfileScreen() {
         </div>
       </div>
 
-      {/* Basic Info — auto-saves on change */}
+      {/* ── Basic Info ── */}
       <div className="px-5">
         <Card>
           <h3 className="text-sm font-semibold mb-3">Basic Info</h3>
@@ -208,7 +265,7 @@ export function ProfileScreen() {
               <input
                 type="text"
                 value={localName}
-                onChange={onNameChange}
+                onChange={(e) => setLocalName(e.target.value)}
                 placeholder="Your name"
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
               />
@@ -217,7 +274,7 @@ export function ProfileScreen() {
               <input
                 type="number"
                 value={localAge}
-                onChange={onAgeChange}
+                onChange={(e) => setLocalAge(e.target.value)}
                 placeholder="Age"
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
               />
@@ -225,41 +282,39 @@ export function ProfileScreen() {
             <Field label="Bio / Tagline">
               <textarea
                 value={localBio}
-                onChange={onBioChange}
+                onChange={(e) => setLocalBio(e.target.value)}
                 placeholder="Tell us about yourself..."
                 rows={2}
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary resize-none"
               />
             </Field>
           </div>
+          <SaveButton status={basicStatus} onClick={handleSaveBasic} />
         </Card>
       </div>
 
-      {/* Travel Preferences */}
+      {/* ── Travel Preferences ── */}
       <div className="px-5">
         <Card>
           <h3 className="text-sm font-semibold mb-3">Travel Preferences</h3>
           <div className="space-y-4">
             <SliderField
               label="Pace"
-              value={travelProfile?.pacePreference ?? 3}
+              value={localPace}
               min={1}
               max={5}
               labels={PACE_LABELS}
-              onChange={(v) => updateTravelProfile({ pacePreference: v })}
+              onChange={setLocalPace}
             />
-
             <Field label="Budget Style">
               <div className="flex gap-2">
                 {BUDGET_OPTIONS.map((opt) => (
                   <button
                     key={opt}
                     type="button"
-                    onClick={() => updateTravelProfile({ budgetStyle: opt })}
+                    onClick={() => setLocalBudget(opt)}
                     className={`flex-1 text-xs py-1.5 rounded-full font-medium transition-colors ${
-                      (travelProfile?.budgetStyle ?? "moderate") === opt
-                        ? "bg-primary text-white"
-                        : "bg-cream-dark text-text-secondary"
+                      localBudget === opt ? "bg-primary text-white" : "bg-cream-dark text-text-secondary"
                     }`}
                   >
                     {opt.charAt(0).toUpperCase() + opt.slice(1)}
@@ -267,27 +322,18 @@ export function ProfileScreen() {
                 ))}
               </div>
             </Field>
-
             <Field label="Cuisine Preferences">
-              <TagInput
-                tags={travelProfile?.cuisinePreferences ?? []}
-                onChange={(tags) => updateTravelProfile({ cuisinePreferences: tags })}
-                placeholder="e.g. Japanese, Thai..."
-              />
+              <TagInput tags={localCuisines} onChange={setLocalCuisines} placeholder="e.g. Japanese, Thai..." />
             </Field>
-
             <Field label="Avoidances">
-              <TagInput
-                tags={travelProfile?.avoidances ?? []}
-                onChange={(tags) => updateTravelProfile({ avoidances: tags })}
-                placeholder="e.g. Tourist traps, chains..."
-              />
+              <TagInput tags={localAvoidances} onChange={setLocalAvoidances} placeholder="e.g. Tourist traps, chains..." />
             </Field>
           </div>
+          <SaveButton status={travelStatus} onClick={handleSaveTravel} />
         </Card>
       </div>
 
-      {/* Notification Settings */}
+      {/* ── Notification Settings ── */}
       <div className="px-5">
         <Card>
           <h3 className="text-sm font-semibold mb-3">Notification Settings</h3>
@@ -297,29 +343,22 @@ export function ProfileScreen() {
                 <p className="text-sm font-medium">Quiet Mode</p>
                 <p className="text-[10px] text-text-muted">Pause proactive suggestions</p>
               </div>
-              <ToggleSwitch checked={quietMode} onToggle={handleToggleQuietMode} />
+              <ToggleSwitch checked={localQuietMode} onToggle={() => setLocalQuietMode((v) => !v)} />
             </div>
             <SliderField
               label="Alert Frequency"
-              value={typeof alertFrequency === "number" ? Math.round(alertFrequency) : 3}
+              value={localAlertFrequency}
               min={1}
               max={5}
               labels={ALERT_LABELS}
-              onChange={(v) => {
-                setAlertFrequency(v);
-                updateTravelProfile({
-                  notificationSettings: {
-                    ...(travelProfile?.notificationSettings ?? {}),
-                    alertFrequency: v,
-                  },
-                });
-              }}
+              onChange={setLocalAlertFrequency}
             />
           </div>
+          <SaveButton status={notifStatus} onClick={handleSaveNotif} />
         </Card>
       </div>
 
-      {/* Buddy Settings — auto-saves on change */}
+      {/* ── Buddy Settings ── */}
       <div className="px-5">
         <Card>
           <h3 className="text-sm font-semibold mb-3">Buddy Settings</h3>
@@ -328,7 +367,7 @@ export function ProfileScreen() {
               <input
                 type="text"
                 value={localBuddyName}
-                onChange={onBuddyNameChange}
+                onChange={(e) => setLocalBuddyName(e.target.value)}
                 placeholder="OmniBuddy"
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
               />
@@ -339,11 +378,9 @@ export function ProfileScreen() {
                   <button
                     key={tone}
                     type="button"
-                    onClick={() => handleToneChange(tone)}
+                    onClick={() => setLocalTone(tone)}
                     className={`flex-1 text-xs py-1.5 rounded-full font-medium transition-colors ${
-                      currentTone === tone
-                        ? "bg-primary text-white"
-                        : "bg-cream-dark text-text-secondary"
+                      localTone === tone ? "bg-primary text-white" : "bg-cream-dark text-text-secondary"
                     }`}
                   >
                     {tone.charAt(0).toUpperCase() + tone.slice(1)}
@@ -352,44 +389,74 @@ export function ProfileScreen() {
               </div>
             </Field>
           </div>
+          <SaveButton status={buddyStatus} onClick={handleSaveBuddy} />
         </Card>
       </div>
 
-      {/* Location Services */}
+      {/* ── Location Services ── */}
       <div className="px-5">
         <Card>
           <h3 className="text-sm font-semibold mb-3">Location Services</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium">Location Access</p>
                 <p className="text-[10px] text-text-muted">
                   {permission === "granted"
-                    ? "Active \u2014 Buddy can suggest nearby places"
+                    ? "Active — Buddy can suggest nearby places"
                     : permission === "denied"
-                    ? "Denied \u2014 enable in browser settings"
-                    : "Not yet requested"}
+                    ? "Denied — enable in browser settings and reload"
+                    : "Allow OmniTrip to access your location"}
                 </p>
               </div>
-              {permission !== "granted" && (
-                <Button className="!text-xs !px-4 !py-2" onClick={requestLocation}>
-                  Enable
+              {permission === "denied" ? (
+                <Button
+                  className="!text-xs !px-4 !py-2"
+                  onClick={handleRequestLocation}
+                  disabled={locationLoading}
+                >
+                  {locationLoading ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Requesting...
+                    </span>
+                  ) : (
+                    "Enable"
+                  )}
                 </Button>
-              )}
-              {permission === "granted" && (
-                <span className="text-xs text-success font-medium">On</span>
+              ) : (
+                <ToggleSwitch
+                  checked={permission === "granted"}
+                  onToggle={handleToggleLocation}
+                />
               )}
             </div>
+
+            {permission === "granted" && lat != null && lng != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cream">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary shrink-0">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <span className="text-[11px] text-text-secondary">
+                  {lat.toFixed(4)}, {lng.toFixed(4)}
+                </span>
+              </div>
+            )}
+
+            {locationError && (
+              <p className="text-[11px] text-conflict">{locationError}</p>
+            )}
           </div>
         </Card>
       </div>
 
-      {/* Account */}
+      {/* ── Account ── */}
       <div className="px-5 pb-6 space-y-3">
         <Card>
           <h3 className="text-sm font-semibold mb-3">Account</h3>
           <div className="space-y-2">
-            <StatRow label="Email" value={user?.email ?? "\u2014"} />
+            <StatRow label="Email" value={user?.email ?? "—"} />
           </div>
         </Card>
         <Button variant="ghost" className="w-full !text-xs" onClick={handleLogout}>
@@ -404,6 +471,39 @@ export function ProfileScreen() {
 }
 
 /* ---- Local helper components ---- */
+
+function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => void }) {
+  return (
+    <div className="mt-4 flex items-center justify-end gap-2">
+      {status === "saved" && (
+        <span className="text-xs text-success font-medium flex items-center gap-1">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Saved
+        </span>
+      )}
+      {status === "error" && (
+        <span className="text-xs text-conflict font-medium">Failed — try again</span>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={status === "saving"}
+        className="px-5 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary-dark transition-colors disabled:opacity-60 flex items-center gap-2"
+      >
+        {status === "saving" ? (
+          <>
+            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            Saving...
+          </>
+        ) : (
+          "Save"
+        )}
+      </button>
+    </div>
+  );
+}
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (

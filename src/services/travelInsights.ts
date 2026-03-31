@@ -56,7 +56,8 @@ function computeFallbackAnalysis(history: UserHistory): VibeAnalysis {
   const paceScore = Math.min(5, Math.max(1, Math.round(travelProfile.pace)));
   const budgetScore = budgetPatterns.budgetAccuracy <= 1.1 ? 4 : budgetPatterns.budgetAccuracy <= 1.3 ? 3 : 2;
 
-  const completed = activityPatterns.completedTypes;
+  const hasCompleted = Object.values(activityPatterns.completedTypes).reduce((s, n) => s + n, 0) > 0;
+  const completed = hasCompleted ? activityPatterns.completedTypes : (activityPatterns.plannedTypes ?? {});
   const total = Object.values(completed).reduce((s, n) => s + n, 0) || 1;
 
   const cultureTypes = ["cultural", "temple", "museum", "heritage", "art"];

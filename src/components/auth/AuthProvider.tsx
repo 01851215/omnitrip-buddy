@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "../../services/supabase";
 import { useAuth } from "../../hooks/useAuth";
 import type { User, Session } from "@supabase/supabase-js";
@@ -17,7 +16,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
-  const navigate = useNavigate();
 
   // Handle Supabase password-recovery redirect: URL contains #access_token=...&type=recovery
   useEffect(() => {
@@ -30,13 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!accessToken) return;
 
-    // Set the session so updateUser() works on the reset screen
     supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(() => {
-      // Clear the hash from the URL before navigating
       window.history.replaceState(null, "", window.location.pathname);
-      navigate("/reset-password", { replace: true });
+      window.location.replace("/reset-password");
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
 }

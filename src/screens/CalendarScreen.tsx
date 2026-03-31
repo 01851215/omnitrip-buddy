@@ -8,6 +8,7 @@ import { Chip } from "../components/ui/Chip";
 import { Button } from "../components/ui/Button";
 import { Buddy } from "../components/Buddy";
 import { MonthGrid } from "../components/calendar/MonthGrid";
+import { CalendarSyncSheet } from "../components/calendar/CalendarSyncSheet";
 import { BookingBadge } from "../components/booking/BookingBadge";
 import { useBookings } from "../hooks/useBookings";
 import type { CalendarEvent, Booking } from "../types";
@@ -64,6 +65,7 @@ export function CalendarScreen() {
     setMonthYear({ year: d.getFullYear(), month: d.getMonth() });
     setViewMode("timeline");
   }, [focusDate]);
+  const [showSyncSheet, setShowSyncSheet] = useState(false);
   const [dismissedConflicts, setDismissedConflicts] = useState<Set<string>>(new Set());
   const [movingEvent, setMovingEvent] = useState<string | null>(null);
   const [addingBuffer, setAddingBuffer] = useState(false);
@@ -181,14 +183,26 @@ export function CalendarScreen() {
         <p className="text-sm text-text-secondary mt-1">Your Sanctuary Schedule</p>
       </div>
 
-      {/* Toggle */}
-      <div className="px-5 flex gap-1">
+      {/* Toggle + Sync */}
+      <div className="px-5 flex items-center gap-1">
         <Chip active={viewMode === "timeline"} onClick={() => setViewMode("timeline")}>
           Timeline
         </Chip>
         <Chip active={viewMode === "month"} onClick={() => setViewMode("month")}>
           Month
         </Chip>
+        <button
+          type="button"
+          onClick={() => setShowSyncSheet(true)}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-white text-xs font-medium hover:bg-primary-dark transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+            <polyline points="16 6 12 2 8 6" />
+            <line x1="12" y1="2" x2="12" y2="15" />
+          </svg>
+          Sync
+        </button>
       </div>
 
       {/* ─── MONTH VIEW ─── */}
@@ -372,6 +386,10 @@ export function CalendarScreen() {
             </div>
           )}
         </>
+      )}
+
+      {showSyncSheet && (
+        <CalendarSyncSheet events={events} onClose={() => setShowSyncSheet(false)} />
       )}
     </div>
   );

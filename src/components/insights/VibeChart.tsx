@@ -9,6 +9,8 @@ interface VibeChartProps {
 }
 
 export function VibeChart({ traits, size = 220 }: VibeChartProps) {
+  if (traits.length === 0) return null;
+
   const cx = size / 2;
   const cy = size / 2;
   const maxRadius = size / 2 - 30;

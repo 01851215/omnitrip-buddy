@@ -27,6 +27,7 @@ interface LocationState {
 
   setPermission: (p: "prompt" | "granted" | "denied") => void;
   setPosition: (lat: number, lng: number) => void;
+  clearPosition: () => void;
   setNearbyPOIs: (pois: POI[]) => void;
   setPendingAlert: (poi: POI | null) => void;
   dismissAlert: (poiId: string) => void;
@@ -66,6 +67,7 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   alertFrequency: 3,
 
   setPermission: (permission) => set({ permission }),
+  clearPosition: () => set({ lat: null, lng: null, speed: null, previousPosition: null }),
   setPosition: (lat, lng) => {
     const prev = get().previousPosition;
     let speed: number | null = null;

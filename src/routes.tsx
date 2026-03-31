@@ -13,6 +13,7 @@ const FootprintsScreen = lazy(() => import("./screens/FootprintsScreen").then((m
 const ProfileScreen = lazy(() => import("./screens/ProfileScreen").then((m) => ({ default: m.ProfileScreen })));
 const DestinationDetailScreen = lazy(() => import("./screens/DestinationDetailScreen").then((m) => ({ default: m.DestinationDetailScreen })));
 const ResetPasswordScreen = lazy(() => import("./screens/ResetPasswordScreen").then((m) => ({ default: m.ResetPasswordScreen })));
+const OAuthCallbackScreen = lazy(() => import("./screens/OAuthCallbackScreen").then((m) => ({ default: m.OAuthCallbackScreen })));
 
 function LazyScreen({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<ScreenLoader />}>{children}</Suspense>;
@@ -26,6 +27,10 @@ export const router = createBrowserRouter([
   {
     path: "/reset-password",
     element: <LazyScreen><ResetPasswordScreen /></LazyScreen>,
+  },
+  {
+    path: "/auth/calendar/callback",
+    element: <LazyScreen><OAuthCallbackScreen /></LazyScreen>,
   },
   {
     element: <AuthGuard><AppLayout /></AuthGuard>,

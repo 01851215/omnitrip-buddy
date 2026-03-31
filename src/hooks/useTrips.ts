@@ -107,25 +107,47 @@ export function useAllDestinations() {
     if (!user) { setLoading(false); return; }
     setLoading(true);
 
-    supabase
-      .from("destinations")
-      .select("id, name, country, lat, lng, arrival_date, trip_id, trips!inner(user_id)")
-      .eq("trips.user_id", user.id)
-      .order("arrival_date", { ascending: true })
-      .then(({ data }) => {
-        const results: DestinationCoord[] = (data ?? [])
-          .filter((d: any) => d.lat != null && d.lng != null)
-          .map((d: any) => ({
-            id: d.id,
-            name: d.name ?? "",
-            country: d.country ?? "",
-            lat: d.lat,
-            lng: d.lng,
-            arrivalDate: d.arrival_date ?? "",
-          }));
-        setDestinations(results);
-        setLoading(false);
-      });
+    const toCoords = (rows: any[]): DestinationCoord[] =>
+      rows
+        .filter((d: any) => d.lat != null && d.lng != null)
+        .map((d: any) => ({
+          id: d.id,
+          name: d.name ?? "",
+          country: d.country ?? "",
+          lat: d.lat,
+          lng: d.lng,
+          arrivalDate: d.arrival_date ?? "",
+        }));
+
+    (async () => {
+      const { data } = await supabase
+        .from("destinations")
+        .select("id, name, country, lat, lng, arrival_date, trip_id, trips!inner(user_id)")
+        .eq("trips.user_id", user.id)
+        .order("arrival_date", { ascending: true });
+
+      let results = toCoords(data ?? []);
+
+      if (results.length === 0) {
+        const { data: trips } = await supabase
+          .from("trips")
+          .select("id")
+          .eq("user_id", user.id);
+
+        if (trips && trips.length > 0) {
+          const { data: fallbackData } = await supabase
+            .from("destinations")
+            .select("id, name, country, lat, lng, arrival_date")
+            .in("trip_id", trips.map((t) => t.id))
+            .order("arrival_date", { ascending: true });
+
+          results = toCoords(fallbackData ?? []);
+        }
+      }
+
+      setDestinations(results);
+      setLoading(false);
+    })();
   }, [user]);
 
   return { destinations, loading };

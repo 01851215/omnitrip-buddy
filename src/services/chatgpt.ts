@@ -3,6 +3,35 @@
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY as string | undefined;
 const OPENAI_MODEL = (import.meta.env.VITE_OPENAI_MODEL as string) || "gpt-5.4";
 
+async function tryModel(
+  model: string,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+): Promise<string | null> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+    }),
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? null;
+}
+
+const FALLBACK_MODELS = ["gpt-5.4-mini", "gpt-4o", "gpt-4o-mini"];
+
 export async function callChatGPT(
   systemPrompt: string,
   userMessage: string,
@@ -11,29 +40,16 @@ export async function callChatGPT(
   if (!OPENAI_API_KEY) return null;
 
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        max_tokens: maxTokens,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-      }),
-    });
+    const result = await tryModel(OPENAI_MODEL, systemPrompt, userMessage, maxTokens);
+    if (result) return result;
 
-    if (!res.ok) {
-      console.warn("ChatGPT API error:", res.status);
-      return null;
+    for (const fallback of FALLBACK_MODELS) {
+      if (fallback === OPENAI_MODEL) continue;
+      const fbResult = await tryModel(fallback, systemPrompt, userMessage, maxTokens);
+      if (fbResult) return fbResult;
     }
 
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content ?? null;
+    return null;
   } catch (err) {
     console.warn("ChatGPT API call failed:", err);
     return null;

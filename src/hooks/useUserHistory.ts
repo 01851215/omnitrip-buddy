@@ -11,6 +11,7 @@ export interface UserHistory {
   }>;
   activityPatterns: {
     completedTypes: Record<string, number>;
+    plannedTypes: Record<string, number>;
     skippedTypes: Record<string, number>;
     favoriteType: string;
     avoidedType: string;
@@ -83,10 +84,12 @@ export function useUserHistory(): {
 
       // Activity patterns
       const completedTypes: Record<string, number> = {};
+      const plannedTypes: Record<string, number> = {};
       const skippedTypes: Record<string, number> = {};
       for (const a of activities) {
         const t = a.type || "other";
         if (a.status === "completed") completedTypes[t] = (completedTypes[t] || 0) + 1;
+        else if (a.status === "planned") plannedTypes[t] = (plannedTypes[t] || 0) + 1;
         if (a.status === "skipped") skippedTypes[t] = (skippedTypes[t] || 0) + 1;
       }
       const favoriteType =
@@ -111,7 +114,7 @@ export function useUserHistory(): {
 
       setHistory({
         pastTrips,
-        activityPatterns: { completedTypes, skippedTypes, favoriteType, avoidedType },
+        activityPatterns: { completedTypes, plannedTypes, skippedTypes, favoriteType, avoidedType },
         budgetPatterns: { avgDailySpend, budgetAccuracy, topCategory },
         travelProfile: {
           pace: (travel?.pace_preference as number) ?? 3,

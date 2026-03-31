@@ -68,7 +68,9 @@ export function useAllCalendarEvents() {
           .in("trip_id", tripIds)
           .order("start_time", { ascending: true });
 
-        actEvents = (actData ?? []).map(activityToCalendarEvent);
+        actEvents = (actData ?? [])
+          .filter((a: any) => a.status !== "skipped")
+          .map(activityToCalendarEvent);
       }
 
       // Deduplicate: prefer calendar_events over activities (they may have booking metadata)
