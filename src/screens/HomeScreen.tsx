@@ -37,7 +37,7 @@ export function HomeScreen() {
   const { profile } = useProfile();
   const { lat, lng, nearbyPOIs } = useLocationStore();
   const setMood = useBuddyStore((s) => s.setMood);
-  const { open: openPanel, addMessage } = useBuddyPanelStore();
+  const { openWithMessage } = useBuddyPanelStore();
 
   const totalSpent = expenses.reduce((s, e) => s + e.convertedAmount, 0);
 
@@ -66,10 +66,8 @@ export function HomeScreen() {
   }, [setMood]);
 
   const handleTellMeMore = useCallback(() => {
-    const msgId = Date.now().toString();
-    addMessage({ id: msgId, role: "user", text: `Tell me more about: ${reflectionText}`, timestamp: Date.now() });
-    openPanel();
-  }, [reflectionText, addMessage, openPanel]);
+    openWithMessage(`Tell me more about: ${reflectionText}`);
+  }, [reflectionText, openWithMessage]);
   const todayEvents = events.filter((e) => {
     const d = new Date(e.startTime).toDateString();
     return d === new Date().toDateString();

@@ -14,6 +14,7 @@ interface BuddyPanelState {
   nearbyPOIs: POI[];
   isProcessing: boolean;
   isListening: boolean;
+  pendingMessage: string | null; // message to auto-send when panel opens
 
   open: () => void;
   close: () => void;
@@ -22,6 +23,8 @@ interface BuddyPanelState {
   setProcessing: (v: boolean) => void;
   setListening: (v: boolean) => void;
   clearMessages: () => void;
+  openWithMessage: (text: string) => void;
+  clearPendingMessage: () => void;
 }
 
 export const useBuddyPanelStore = create<BuddyPanelState>((set) => ({
@@ -30,6 +33,7 @@ export const useBuddyPanelStore = create<BuddyPanelState>((set) => ({
   nearbyPOIs: [],
   isProcessing: false,
   isListening: false,
+  pendingMessage: null,
 
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false, isListening: false }),
@@ -38,4 +42,6 @@ export const useBuddyPanelStore = create<BuddyPanelState>((set) => ({
   setProcessing: (v) => set({ isProcessing: v }),
   setListening: (v) => set({ isListening: v }),
   clearMessages: () => set({ messages: [] }),
+  openWithMessage: (text) => set({ isOpen: true, pendingMessage: text }),
+  clearPendingMessage: () => set({ pendingMessage: null }),
 }));

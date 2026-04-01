@@ -89,7 +89,7 @@ interface BuddyPanelProps {
 }
 
 export function BuddyPanel({ history }: BuddyPanelProps) {
-  const { isOpen, messages, isProcessing, isListening, close, addMessage, setProcessing, setListening } =
+  const { isOpen, messages, isProcessing, isListening, pendingMessage, close, addMessage, setProcessing, setListening, clearPendingMessage } =
     useBuddyPanelStore();
   const nearbyPOIs = useLocationStore((s) => s.nearbyPOIs);
   const setMood = useBuddyStore((s) => s.setMood);
@@ -105,6 +105,15 @@ export function BuddyPanel({ history }: BuddyPanelProps) {
       feedRef.current.scrollTop = feedRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Auto-send pending message (e.g. "Tell me more" from Buddy Reflection)
+  useEffect(() => {
+    if (isOpen && pendingMessage) {
+      clearPendingMessage();
+      handleSend(pendingMessage);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, pendingMessage]);
 
   const handleSend = async (text: string) => {
     addMessage({
