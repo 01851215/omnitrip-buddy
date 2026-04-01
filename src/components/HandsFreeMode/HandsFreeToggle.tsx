@@ -172,12 +172,13 @@ export function HandsFreeToggle({ history }: HandsFreeToggleProps) {
         return;
       }
 
-      // Fetch fresh nearby POIs if location is available and store is empty
+      // Fetch fresh nearby POIs — only store real ones (filter out demo/Bali placeholders)
       const loc = useLocationStore.getState();
-      if (loc.lat && loc.lng && loc.permission === "granted" && loc.nearbyPOIs.length === 0) {
+      if (loc.lat && loc.lng && loc.permission === "granted") {
         fetchNearbyPOIs(loc.lat, loc.lng)
           .then((pois) => {
-            if (!cancelled) loc.setNearbyPOIs(pois);
+            const realPOIs = pois.filter((p) => !p.id.startsWith("demo-"));
+            if (!cancelled) loc.setNearbyPOIs(realPOIs);
           })
           .catch(() => {});
       }

@@ -84,11 +84,15 @@ async function checkForAlerts(): Promise<void> {
   // Smart trigger: user should be walking (or stationary), not in a vehicle
   if (store.speed !== null && store.speed > MAX_WALKING_SPEED) return;
 
-  // Fetch nearby POIs
+  // Fetch nearby POIs — exclude demo entries (no Foursquare key)
   const pois = await fetchNearbyPOIs(store.lat, store.lng);
+  const realPOIs = pois.filter((p) => !p.id.startsWith("demo-"));
 
-  // Filter: unseen + proximity + high confidence
-  const candidates = pois
+  // Update the store's nearby feed with real POIs only
+  store.setNearbyPOIs(realPOIs);
+
+  // Filter: real POIs only + unseen + proximity + high confidence
+  const candidates = realPOIs
     .filter((p) => !store.alertHistory.includes(p.id))
     .filter((p) => p.distance <= MAX_PROXIMITY)
     .filter((p) => isHighConfidence(p.category));
