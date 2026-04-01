@@ -11,6 +11,7 @@ import { requestMicPermission, startListening, stopListening } from "../../servi
 import { speak } from "../../services/tts";
 import { callChatGPT } from "../../services/chatgpt";
 import { fetchNearbyPOIs } from "../../services/poi";
+import { reverseGeocode } from "../../services/location";
 import {
   buildSystemPrompt,
   extractAction,
@@ -49,7 +50,7 @@ interface HandsFreeToggleProps {
 }
 
 export function HandsFreeToggle({ history }: HandsFreeToggleProps) {
-  const { handsFreeMode, toggleHandsFree, pendingAlert } = useLocationStore();
+  const { handsFreeMode, toggleHandsFree, pendingAlert, locationName, lat, lng } = useLocationStore();
   const setMood = useBuddyStore((s) => s.setMood);
   const profile = useProfileStore((s) => s.profile);
   const navigate = useNavigate();
@@ -172,9 +173,25 @@ export function HandsFreeToggle({ history }: HandsFreeToggleProps) {
         return;
       }
 
-      // Fetch fresh nearby POIs — only store real ones (filter out demo/Bali placeholders)
       const loc = useLocationStore.getState();
+
+      // Clear any stale demo/Bali pending alert from previous sessions
+      if (loc.pendingAlert && loc.pendingAlert.id.startsWith("demo-")) {
+        loc.setPendingAlert(null);
+      }
+
       if (loc.lat && loc.lng && loc.permission === "granted") {
+        // If locationName not set yet, force a reverse geocode now so Buddy
+        // knows the real city name (e.g. "Wembley, London") from the first response
+        if (!loc.locationName) {
+          reverseGeocode(loc.lat, loc.lng)
+            .then((name) => {
+              if (name && !cancelled) loc.setLocationName(name);
+            })
+            .catch(() => {});
+        }
+
+        // Fetch fresh nearby POIs — only store real ones (filter out demo/Bali placeholders)
         fetchNearbyPOIs(loc.lat, loc.lng)
           .then((pois) => {
             const realPOIs = pois.filter((p) => !p.id.startsWith("demo-"));
@@ -257,9 +274,21 @@ export function HandsFreeToggle({ history }: HandsFreeToggleProps) {
 
       {/* Status */}
       <h2 className="text-lg font-semibold font-serif mb-1">Hands-Free Mode</h2>
-      <p className="text-sm text-white/50 mb-4 text-center px-10">
+      <p className="text-sm text-white/50 mb-2 text-center px-10">
         {statusText}
       </p>
+
+      {/* Location badge — shows resolved city name so user can verify it's correct */}
+      {(locationName || (lat && lng)) && (
+        <div className="flex items-center gap-1.5 mb-4">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="text-primary/70">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+          </svg>
+          <span className="text-xs text-white/40">
+            {locationName ?? `${lat!.toFixed(4)}, ${lng!.toFixed(4)}`}
+          </span>
+        </div>
+      )}
 
       {/* Live transcript */}
       {transcript && (voiceState === "listening" || voiceState === "processing") && (

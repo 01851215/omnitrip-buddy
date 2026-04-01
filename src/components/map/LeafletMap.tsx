@@ -18,6 +18,7 @@ interface LeafletMapProps {
   polyline?: [number, number][];
   fitBounds?: boolean;
   userLocation?: { lat: number; lng: number } | null;
+  zoomControl?: boolean;
   className?: string;
   height?: string;
 }
@@ -53,6 +54,7 @@ export function LeafletMap({
   polyline,
   fitBounds = false,
   userLocation,
+  zoomControl = false,
   className = "",
   height = "200px",
 }: LeafletMapProps) {
@@ -69,7 +71,8 @@ export function LeafletMap({
     const map = L.map(mapRef.current, {
       center,
       zoom,
-      zoomControl: false,
+      zoomControl,
+      scrollWheelZoom: true,
       attributionControl: false,
     });
 

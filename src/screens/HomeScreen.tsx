@@ -254,13 +254,14 @@ export function HomeScreen() {
       {/* Nearby Map */}
       {lat && lng && (
         <div className="px-5">
-          <Card className="!p-0 overflow-hidden">
+          <Card className="!p-0">
             <LeafletMap
               center={[lat, lng]}
               zoom={15}
               userLocation={{ lat, lng }}
+              zoomControl
               markers={nearbyPOIs
-                .filter((p) => p.lat && p.lng)
+                .filter((p) => p.lat && p.lng && !p.id.startsWith("demo-"))
                 .map((p) => ({
                   id: p.id,
                   lat: p.lat!,
@@ -268,11 +269,15 @@ export function HomeScreen() {
                   name: p.name,
                   category: p.category,
                 }))}
-              height="180px"
+              height="200px"
             />
             <div className="px-3 py-2">
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">Explore Nearby</p>
-              <p className="text-xs text-text-secondary">{nearbyPOIs.length} places discovered near you</p>
+              <p className="text-xs text-text-secondary">
+                {nearbyPOIs.filter((p) => !p.id.startsWith("demo-")).length > 0
+                  ? `${nearbyPOIs.filter((p) => !p.id.startsWith("demo-")).length} places discovered near you`
+                  : "Your location — tap map to explore"}
+              </p>
             </div>
           </Card>
         </div>
