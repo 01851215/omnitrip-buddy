@@ -1,16 +1,18 @@
 import { NavLink } from "react-router-dom";
 import { useLocationStore } from "../../stores/locationStore";
-
-const tabs = [
-  { to: "/home", label: "Home", icon: HomeIcon },
-  { to: "/footprints", label: "Journeys", icon: JourneysIcon },
-  { to: "/plan", label: "Plan", icon: PlanIcon },
-  { to: "/calendar", label: "Calendar", icon: CalendarIcon },
-  { to: "/profile", label: "Profile", icon: ProfileIcon },
-] as const;
+import { useT } from "../../i18n/useT";
 
 export function BottomNav() {
   const { handsFreeMode, toggleHandsFree } = useLocationStore();
+  const t = useT();
+
+  const tabs = [
+    { to: "/home", label: t.nav.home, icon: HomeIcon },
+    { to: "/footprints", label: t.nav.journeys, icon: JourneysIcon },
+    { to: "/plan", label: t.nav.plan, icon: PlanIcon },
+    { to: "/calendar", label: t.nav.calendar, icon: CalendarIcon },
+    { to: "/profile", label: t.nav.profile, icon: ProfileIcon },
+  ] as const;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-surface border-t border-cream-dark shadow-[0_-2px_10px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
@@ -47,7 +49,7 @@ export function BottomNav() {
           aria-label="Toggle hands-free mode"
         >
           <HandsFreeIcon active={handsFreeMode} />
-          <span>Audio</span>
+          <span>{t.nav.audio}</span>
           {handsFreeMode && (
             <span className="absolute bottom-1 w-1 h-1 rounded-full bg-primary" />
           )}

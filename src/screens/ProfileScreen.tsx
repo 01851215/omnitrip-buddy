@@ -14,11 +14,11 @@ import { SliderField } from "../components/profile/SliderField";
 import { supabase } from "../services/supabase";
 import { useSettingsStore, LANGUAGE_LABELS } from "../stores/settingsStore";
 import type { Theme, Language } from "../stores/settingsStore";
+import { useT } from "../i18n/useT";
+import { translations } from "../i18n/translations";
 
-const PACE_LABELS = ["Very Slow", "Slow", "Moderate", "Fast", "Very Fast"];
 const BUDGET_OPTIONS = ["budget", "moderate", "luxury"] as const;
 const TONE_OPTIONS = ["warm", "energetic", "calm"] as const;
-const ALERT_LABELS = ["Rare", "Low", "Normal", "Often", "Frequent"];
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -31,6 +31,9 @@ export function ProfileScreen() {
   const { loading } = useProfile();
   const profile = useProfileStore((s) => s.profile);
   const travelProfile = useProfileStore((s) => s.travelProfile);
+
+  const t = useT();
+  const [pendingLanguage, setPendingLanguage] = useState<Language | null>(null);
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -221,6 +224,19 @@ export function ProfileScreen() {
 
   return (
     <div className="space-y-5 pb-28">
+      {/* Language change confirmation dialog */}
+      {pendingLanguage && (
+        <LanguageConfirmDialog
+          currentLang={useSettingsStore.getState().language}
+          newLang={pendingLanguage}
+          onConfirm={() => {
+            useSettingsStore.getState().setLanguage(pendingLanguage);
+            setPendingLanguage(null);
+          }}
+          onCancel={() => setPendingLanguage(null)}
+        />
+      )}
+
       {/* Header with avatar */}
       <div className="px-5 pt-6 flex items-center gap-4">
         <button
@@ -252,7 +268,7 @@ export function ProfileScreen() {
         />
         <div className="flex-1">
           <h1 className="text-2xl font-bold font-serif">
-            {profile?.displayName || user?.user_metadata?.display_name || "Traveller"}
+            {profile?.displayName || user?.user_metadata?.display_name || t.common.yourTraveller}
           </h1>
           <p className="text-sm text-text-secondary">{user?.email ?? ""}</p>
         </div>
@@ -261,54 +277,54 @@ export function ProfileScreen() {
       {/* ── Basic Info ── */}
       <div className="px-5">
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Basic Info</h3>
+          <h3 className="text-sm font-semibold mb-3">{t.profile.basicInfo}</h3>
           <div className="space-y-3">
-            <Field label="Display Name">
+            <Field label={t.profile.displayName}>
               <input
                 type="text"
                 value={localName}
                 onChange={(e) => setLocalName(e.target.value)}
-                placeholder="Your name"
+                placeholder={t.profile.displayName}
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </Field>
-            <Field label="Age">
+            <Field label={t.profile.age}>
               <input
                 type="number"
                 value={localAge}
                 onChange={(e) => setLocalAge(e.target.value)}
-                placeholder="Age"
+                placeholder={t.profile.age}
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </Field>
-            <Field label="Bio / Tagline">
+            <Field label={t.profile.bio}>
               <textarea
                 value={localBio}
                 onChange={(e) => setLocalBio(e.target.value)}
-                placeholder="Tell us about yourself..."
+                placeholder={t.profile.bio}
                 rows={2}
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary resize-none"
               />
             </Field>
           </div>
-          <SaveButton status={basicStatus} onClick={handleSaveBasic} />
+          <SaveButton status={basicStatus} onClick={handleSaveBasic} t={t} />
         </Card>
       </div>
 
       {/* ── Travel Preferences ── */}
       <div className="px-5">
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Travel Preferences</h3>
+          <h3 className="text-sm font-semibold mb-3">{t.profile.travelPreferences}</h3>
           <div className="space-y-4">
             <SliderField
-              label="Pace"
+              label={t.profile.pace}
               value={localPace}
               min={1}
               max={5}
-              labels={PACE_LABELS}
+              labels={t.pace as unknown as string[]}
               onChange={setLocalPace}
             />
-            <Field label="Budget Style">
+            <Field label={t.profile.budgetStyle}>
               <div className="flex gap-2">
                 {BUDGET_OPTIONS.map((opt) => (
                   <button
@@ -319,53 +335,53 @@ export function ProfileScreen() {
                       localBudget === opt ? "bg-primary text-white" : "bg-cream-dark text-text-secondary"
                     }`}
                   >
-                    {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                    {t.budget[opt]}
                   </button>
                 ))}
               </div>
             </Field>
-            <Field label="Cuisine Preferences">
+            <Field label={t.profile.cuisinePreferences}>
               <TagInput tags={localCuisines} onChange={setLocalCuisines} placeholder="e.g. Japanese, Thai..." />
             </Field>
-            <Field label="Avoidances">
+            <Field label={t.profile.avoidances}>
               <TagInput tags={localAvoidances} onChange={setLocalAvoidances} placeholder="e.g. Tourist traps, chains..." />
             </Field>
           </div>
-          <SaveButton status={travelStatus} onClick={handleSaveTravel} />
+          <SaveButton status={travelStatus} onClick={handleSaveTravel} t={t} />
         </Card>
       </div>
 
       {/* ── Notification Settings ── */}
       <div className="px-5">
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Notification Settings</h3>
+          <h3 className="text-sm font-semibold mb-3">{t.profile.notificationSettings}</h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Quiet Mode</p>
-                <p className="text-[10px] text-text-muted">Pause proactive suggestions</p>
+                <p className="text-sm font-medium">{t.profile.quietMode}</p>
+                <p className="text-[10px] text-text-muted">{t.profile.quietModeDesc}</p>
               </div>
               <ToggleSwitch checked={localQuietMode} onToggle={() => setLocalQuietMode((v) => !v)} />
             </div>
             <SliderField
-              label="Alert Frequency"
+              label={t.profile.alertFrequency}
               value={localAlertFrequency}
               min={1}
               max={5}
-              labels={ALERT_LABELS}
+              labels={t.alerts as unknown as string[]}
               onChange={setLocalAlertFrequency}
             />
           </div>
-          <SaveButton status={notifStatus} onClick={handleSaveNotif} />
+          <SaveButton status={notifStatus} onClick={handleSaveNotif} t={t} />
         </Card>
       </div>
 
       {/* ── Buddy Settings ── */}
       <div className="px-5">
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Buddy Settings</h3>
+          <h3 className="text-sm font-semibold mb-3">{t.profile.buddySettings}</h3>
           <div className="space-y-3">
-            <Field label="Buddy Name">
+            <Field label={t.profile.buddyName}>
               <input
                 type="text"
                 value={localBuddyName}
@@ -374,7 +390,7 @@ export function ProfileScreen() {
                 className="w-full text-sm border border-cream-dark rounded-lg px-3 py-2 bg-surface focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </Field>
-            <Field label="Personality Tone">
+            <Field label={t.profile.personalityTone}>
               <div className="flex gap-2">
                 {TONE_OPTIONS.map((tone) => (
                   <button
@@ -385,30 +401,30 @@ export function ProfileScreen() {
                       localTone === tone ? "bg-primary text-white" : "bg-cream-dark text-text-secondary"
                     }`}
                   >
-                    {tone.charAt(0).toUpperCase() + tone.slice(1)}
+                    {t.tone[tone]}
                   </button>
                 ))}
               </div>
             </Field>
           </div>
-          <SaveButton status={buddyStatus} onClick={handleSaveBuddy} />
+          <SaveButton status={buddyStatus} onClick={handleSaveBuddy} t={t} />
         </Card>
       </div>
 
       {/* ── Location Services ── */}
       <div className="px-5">
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Location Services</h3>
+          <h3 className="text-sm font-semibold mb-3">{t.profile.locationServices}</h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-sm font-medium">Location Access</p>
+                <p className="text-sm font-medium">{t.profile.locationAccess}</p>
                 <p className="text-[10px] text-text-muted">
                   {permission === "granted"
-                    ? "Active — Buddy can suggest nearby places"
+                    ? t.profile.locationActive
                     : permission === "denied"
-                    ? "Denied — enable in browser settings and reload"
-                    : "Allow OmniTrip to access your location"}
+                    ? t.profile.locationDenied
+                    : t.profile.locationPrompt}
                 </p>
               </div>
               {permission === "denied" ? (
@@ -420,10 +436,10 @@ export function ProfileScreen() {
                   {locationLoading ? (
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Requesting...
+                      {t.common.requesting}
                     </span>
                   ) : (
-                    "Enable"
+                    t.common.enable
                   )}
                 </Button>
               ) : (
@@ -454,21 +470,21 @@ export function ProfileScreen() {
       </div>
 
       {/* ── System Settings ── */}
-      <SystemSettings />
+      <SystemSettings onLanguageRequest={setPendingLanguage} />
 
       {/* ── Account ── */}
       <div className="px-5 pb-6 space-y-3">
         <Card>
-          <h3 className="text-sm font-semibold mb-3">Account</h3>
+          <h3 className="text-sm font-semibold mb-3">{t.profile.account}</h3>
           <div className="space-y-2">
-            <StatRow label="Email" value={user?.email ?? "—"} />
+            <StatRow label={t.profile.email} value={user?.email ?? "—"} />
           </div>
         </Card>
         <Button variant="ghost" className="w-full !text-xs" onClick={handleLogout}>
-          Log Out
+          {t.profile.logOut}
         </Button>
         <p className="text-center text-[10px] text-text-muted">
-          OmniTrip v0.3.0 — Advanced Features Build
+          OmniTrip v1.0.0
         </p>
       </div>
     </div>
@@ -477,7 +493,7 @@ export function ProfileScreen() {
 
 /* ---- Local helper components ---- */
 
-function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => void }) {
+function SaveButton({ status, onClick, t }: { status: SaveStatus; onClick: () => void; t: ReturnType<typeof useT> }) {
   return (
     <div className="mt-4 flex items-center justify-end gap-2">
       {status === "saved" && (
@@ -485,11 +501,11 @@ function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => vo
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-          Saved
+          {t.common.saved}
         </span>
       )}
       {status === "error" && (
-        <span className="text-xs text-conflict font-medium">Failed — try again</span>
+        <span className="text-xs text-conflict font-medium">{t.common.failed}</span>
       )}
       <button
         type="button"
@@ -500,10 +516,10 @@ function SaveButton({ status, onClick }: { status: SaveStatus; onClick: () => vo
         {status === "saving" ? (
           <>
             <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            Saving...
+            {t.common.saving}
           </>
         ) : (
-          "Save"
+          t.common.save
         )}
       </button>
     </div>
@@ -546,23 +562,23 @@ function ToggleSwitch({ checked, onToggle }: { checked: boolean; onToggle: () =>
   );
 }
 
-function SystemSettings() {
-  const { theme, language, voiceRecitation, setTheme, setLanguage, setVoiceRecitation } =
-    useSettingsStore();
+function SystemSettings({ onLanguageRequest }: { onLanguageRequest: (l: Language) => void }) {
+  const { theme, language, voiceRecitation, setTheme, setVoiceRecitation } = useSettingsStore();
+  const t = useT();
 
   const THEME_OPTIONS: { value: Theme; label: string; icon: string }[] = [
-    { value: "light", label: "Light", icon: "☀️" },
-    { value: "dark", label: "Dark", icon: "🌙" },
-    { value: "auto", label: "Auto", icon: "⚙️" },
+    { value: "light", label: t.themeOptions.light, icon: "☀️" },
+    { value: "dark", label: t.themeOptions.dark, icon: "🌙" },
+    { value: "auto", label: t.themeOptions.auto, icon: "⚙️" },
   ];
 
   return (
     <div className="px-5">
       <Card>
-        <h3 className="text-sm font-semibold mb-3">System Settings</h3>
+        <h3 className="text-sm font-semibold mb-3">{t.profile.systemSettings}</h3>
         <div className="space-y-4">
           {/* Theme */}
-          <Field label="Theme">
+          <Field label={t.profile.theme}>
             <div className="flex gap-2">
               {THEME_OPTIONS.map((opt) => (
                 <button
@@ -582,14 +598,16 @@ function SystemSettings() {
             </div>
           </Field>
 
-          {/* Language */}
-          <Field label="Language">
+          {/* Language — clicking opens confirmation dialog */}
+          <Field label={t.profile.language}>
             <div className="grid grid-cols-3 gap-2">
               {(Object.entries(LANGUAGE_LABELS) as [Language, string][]).map(([code, label]) => (
                 <button
                   key={code}
                   type="button"
-                  onClick={() => setLanguage(code)}
+                  onClick={() => {
+                    if (code !== language) onLanguageRequest(code);
+                  }}
                   className={`py-1.5 rounded-full text-xs font-medium transition-colors ${
                     language === code
                       ? "bg-primary text-white"
@@ -605,8 +623,8 @@ function SystemSettings() {
           {/* Voice Recitation */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Voice Recitation</p>
-              <p className="text-[10px] text-text-muted">Buddy reads replies aloud</p>
+              <p className="text-sm font-medium">{t.profile.voiceRecitation}</p>
+              <p className="text-[10px] text-text-muted">{t.profile.voiceRecitationDesc}</p>
             </div>
             <ToggleSwitch
               checked={voiceRecitation}
@@ -615,6 +633,62 @@ function SystemSettings() {
           </div>
         </div>
       </Card>
+    </div>
+  );
+}
+
+function LanguageConfirmDialog({
+  currentLang,
+  newLang,
+  onConfirm,
+  onCancel,
+}: {
+  currentLang: Language;
+  newLang: Language;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  // Show dialog in both current AND new language so the user can read it either way
+  const tCurrent = translations[currentLang];
+  const tNew = translations[newLang];
+  const newLangLabel = LANGUAGE_LABELS[newLang];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-surface rounded-2xl p-6 w-full max-w-sm shadow-xl animate-slide-up">
+        {/* Current language */}
+        <h3 className="text-base font-semibold text-center mb-1">{tCurrent.langConfirm.title}</h3>
+        <p className="text-xs text-text-muted text-center mb-2">
+          {tCurrent.langConfirm.message(newLangLabel)}
+        </p>
+        {/* New language (if different from English) */}
+        {currentLang !== newLang && newLang !== "en" && (
+          <>
+            <div className="h-px bg-cream-dark my-3" />
+            <h3 className="text-base font-semibold text-center mb-1">{tNew.langConfirm.title}</h3>
+            <p className="text-xs text-text-muted text-center mb-2">
+              {tNew.langConfirm.message(newLangLabel)}
+            </p>
+          </>
+        )}
+        <div className="flex gap-3 mt-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl bg-cream-dark text-text-secondary text-sm font-medium"
+          >
+            {tCurrent.common.cancel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold"
+          >
+            {tCurrent.langConfirm.confirm}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
