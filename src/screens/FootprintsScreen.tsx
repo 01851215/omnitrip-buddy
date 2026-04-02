@@ -12,6 +12,7 @@ import { Buddy } from "../components/Buddy";
 import { LeafletMap } from "../components/map/LeafletMap";
 import { VibeChart } from "../components/insights/VibeChart";
 import { CategoryBreakdown } from "../components/insights/CategoryBreakdown";
+import { useT } from "../i18n/useT";
 
 export function FootprintsScreen() {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ export function FootprintsScreen() {
   const [showNewEntry, setShowNewEntry] = useState(false);
   const [vibeAnalysis, setVibeAnalysis] = useState<VibeAnalysis | null>(null);
   const [vibeLoading, setVibeLoading] = useState(false);
+  const t = useT();
 
   // Generate vibe analysis when history is available
   useEffect(() => {
@@ -58,9 +60,9 @@ export function FootprintsScreen() {
       <div className="relative px-5 pt-6 pb-8">
         <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
         <div className="relative">
-          <h1 className="text-3xl font-bold font-serif">Your Footprints</h1>
+          <h1 className="text-3xl font-bold font-serif">{t.footprints.title}</h1>
           <p className="text-sm text-text-secondary mt-2 leading-relaxed max-w-[300px]">
-            A collection of every path you've walked, the stories you've lived, and the ways the world is changing you.
+            {t.footprints.subtitle}
           </p>
         </div>
       </div>
@@ -69,16 +71,16 @@ export function FootprintsScreen() {
       <div className="px-5 flex gap-6">
         <div>
           <p className="text-2xl font-bold">{allTrips.length}</p>
-          <p className="text-[10px] text-text-muted uppercase tracking-wider">Trips</p>
+          <p className="text-[10px] text-text-muted uppercase tracking-wider">{t.footprints.trips}</p>
         </div>
         <div>
           <p className="text-2xl font-bold">{allDestinations.length}</p>
-          <p className="text-[10px] text-text-muted uppercase tracking-wider">Places</p>
+          <p className="text-[10px] text-text-muted uppercase tracking-wider">{t.footprints.places}</p>
         </div>
         <div>
           <p className="text-2xl font-bold">{uniqueCountries.size || yearsActive + "y"}</p>
           <p className="text-[10px] text-text-muted uppercase tracking-wider">
-            {uniqueCountries.size > 0 ? "Countries" : "Exploring"}
+            {uniqueCountries.size > 0 ? t.footprints.countries : t.footprints.exploring}
           </p>
         </div>
       </div>
@@ -86,7 +88,7 @@ export function FootprintsScreen() {
       {/* Completed Journeys */}
       {completedTrips.length > 0 && (
         <div className="px-5">
-          <h2 className="text-xl font-bold font-serif mb-3">Completed Journeys</h2>
+          <h2 className="text-xl font-bold font-serif mb-3">{t.footprints.completedJourneys}</h2>
           <div className="space-y-3">
             {completedTrips.map((trip) => (
               <Card key={trip.id} className="!p-0 overflow-hidden">
@@ -122,17 +124,17 @@ export function FootprintsScreen() {
                 height="200px"
               />
               <div className="px-4 py-2.5">
-                <p className="text-sm font-medium">The Connected Path</p>
+                <p className="text-sm font-medium">{t.footprints.connectedPath}</p>
                 <p className="text-[10px] text-text-muted">
-                  {allDestinations.length} destinations across {uniqueCountries.size} {uniqueCountries.size === 1 ? "country" : "countries"}
+                  {t.footprints.connectedPathDesc(allDestinations.length, uniqueCountries.size, uniqueCountries.size === 1 ? t.footprints.country : t.footprints.countriesPlural)}
                 </p>
               </div>
             </>
           ) : (
             <div className="h-48 bg-gradient-to-br from-primary/10 via-cream to-accent/10 flex items-center justify-center">
               <div className="text-center px-6">
-                <p className="text-sm font-medium text-text-secondary">The Connected Path</p>
-                <p className="text-xs text-text-muted mt-1">Your journey map will appear here as you visit more places</p>
+                <p className="text-sm font-medium text-text-secondary">{t.footprints.connectedPath}</p>
+                <p className="text-xs text-text-muted mt-1">{t.footprints.mapPlaceholder}</p>
               </div>
             </div>
           )}
@@ -143,7 +145,7 @@ export function FootprintsScreen() {
       {vibeAnalysis && (
         <div className="px-5 space-y-4">
           <div className="text-center">
-            <p className="text-[10px] uppercase tracking-wider text-primary font-medium mb-1">Your Travel Vibe</p>
+            <p className="text-[10px] uppercase tracking-wider text-primary font-medium mb-1">{t.footprints.travelVibe}</p>
             <h2 className="text-2xl font-bold font-serif">{vibeAnalysis.vibeLabel}</h2>
             <p className="text-xs text-text-secondary mt-2 leading-relaxed max-w-[320px] mx-auto italic">
               {vibeAnalysis.vibeDescription}
@@ -152,19 +154,19 @@ export function FootprintsScreen() {
 
           {/* Spider Chart */}
           <Card>
-            <h3 className="text-sm font-semibold mb-3 text-center">Traveller Profile</h3>
+            <h3 className="text-sm font-semibold mb-3 text-center">{t.footprints.travellerProfile}</h3>
             <VibeChart traits={vibeAnalysis.traits} />
           </Card>
 
           {/* Activity Breakdown */}
           <Card>
-            <h3 className="text-sm font-semibold mb-3">What You Love</h3>
+            <h3 className="text-sm font-semibold mb-3">{t.footprints.whatYouLove}</h3>
             <CategoryBreakdown categories={vibeAnalysis.topCategories} />
           </Card>
 
           {/* Evolution Narrative */}
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">The Evolution in You</p>
+            <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">{t.footprints.evolutionInYou}</p>
             <p className="text-sm text-text-secondary leading-relaxed">
               {vibeAnalysis.evolutionNarrative}
             </p>
@@ -177,18 +179,18 @@ export function FootprintsScreen() {
           <div className="w-8 h-8 rounded-full overflow-hidden mx-auto mb-2">
             <Buddy state="thinking" size="mini" mode="video" />
           </div>
-          <p className="text-xs text-text-muted">Analyzing your travel personality...</p>
+          <p className="text-xs text-text-muted">{t.footprints.analyzingPersonality}</p>
         </div>
       )}
 
       {/* Timeline of Being */}
       <div className="px-5">
-        <h2 className="text-xl font-bold font-serif mb-4">Timeline of Being</h2>
+        <h2 className="text-xl font-bold font-serif mb-4">{t.footprints.timelineOfBeing}</h2>
         {journalEntries.length === 0 ? (
           <EmptyState
             icon="📝"
-            title="No journal entries yet"
-            description="Your travel memories will appear here as you add journal entries."
+            title={t.footprints.noJournalYet}
+            description={t.footprints.noJournalYetDesc}
           />
         ) : (
           <div className="space-y-4">
@@ -220,9 +222,9 @@ export function FootprintsScreen() {
       {/* Next Chapter CTA */}
       <div className="px-5 pb-6">
         <Card className="text-center !py-8">
-          <h3 className="text-lg font-bold font-serif">Ready for the next chapter?</h3>
+          <h3 className="text-lg font-bold font-serif">{t.footprints.nextChapter}</h3>
           <Button onClick={() => navigate("/plan")} className="mt-4">
-            Plan a New Journey
+            {t.footprints.planNewJourney}
           </Button>
         </Card>
       </div>
@@ -262,6 +264,7 @@ function NewJournalEntry({
   const [text, setText] = useState("");
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
+  const t = useT();
 
   const handleSave = async () => {
     if (!text.trim()) return;
@@ -282,17 +285,17 @@ function NewJournalEntry({
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
       <div className="relative bg-surface rounded-t-3xl w-full max-w-[430px] p-6 space-y-4">
-        <h3 className="font-semibold text-lg font-serif">New Journal Entry</h3>
+        <h3 className="font-semibold text-lg font-serif">{t.footprints.newJournalEntry}</h3>
         <input
           type="text"
-          placeholder="Location"
+          placeholder={t.footprints.location}
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           className="w-full px-4 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
           autoFocus
         />
         <textarea
-          placeholder="What's on your mind?"
+          placeholder={t.footprints.whatsOnYourMind}
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={4}
@@ -300,10 +303,10 @@ function NewJournalEntry({
         />
         <div className="flex gap-3">
           <Button onClick={handleSave} className="flex-1" disabled={saving || !text.trim()}>
-            {saving ? "Saving..." : "Save"}
+            {saving ? t.footprints.saving : t.footprints.save}
           </Button>
           <Button variant="ghost" onClick={onClose} className="flex-1">
-            Cancel
+            {t.footprints.cancel}
           </Button>
         </div>
       </div>

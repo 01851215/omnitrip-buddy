@@ -14,6 +14,7 @@ import { Buddy } from "../components/Buddy";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { LeafletMap } from "../components/map/LeafletMap";
+import { useT } from "../i18n/useT";
 
 const DEFAULT_REFLECTION =
   "I've been looking at your spending patterns. Consider trying some local street food tonight — it's often the most memorable part of any trip, and easy on the budget!";
@@ -38,6 +39,7 @@ export function HomeScreen() {
   const { lat, lng, nearbyPOIs } = useLocationStore();
   const setMood = useBuddyStore((s) => s.setMood);
   const { openWithMessage } = useBuddyPanelStore();
+  const t = useT();
 
   const totalSpent = expenses.reduce((s, e) => s + e.convertedAmount, 0);
 
@@ -118,14 +120,14 @@ export function HomeScreen() {
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4">
               <span className="text-[10px] uppercase tracking-wider text-white/70 font-medium">
-                {trip.status === "planning" ? "Planned Journey" : "Ongoing Journey"}
+                {trip.status === "planning" ? t.home.plannedJourney : t.home.ongoingJourney}
               </span>
               <h2 className="text-xl font-bold text-white font-serif mt-0.5">
                 {trip.title}
               </h2>
               <div className="flex items-center gap-4 mt-2 text-xs text-white/80">
-                <span>Journey Progress</span>
-                <span>Day {daysIn} of {totalDays}</span>
+                <span>{t.home.journeyProgress}</span>
+                <span>{t.home.day} {daysIn} {t.home.of} {totalDays}</span>
               </div>
             </div>
           </div>
@@ -140,7 +142,7 @@ export function HomeScreen() {
                 setCompleting(false);
               }}
             >
-              {completing ? "Starting..." : "Start Trip"}
+              {completing ? t.home.starting : t.home.startTrip}
             </Button>
           ) : (
             <Button
@@ -154,7 +156,7 @@ export function HomeScreen() {
                 setCompleting(false);
               }}
             >
-              {completing ? "Completing..." : "Mark Journey Complete"}
+              {completing ? t.home.completing : t.home.markComplete}
             </Button>
           )}
         </div>
@@ -162,9 +164,9 @@ export function HomeScreen() {
         <div className="px-5">
           <EmptyState
             icon="✈️"
-            title="No active journey"
-            description="Plan your next adventure and it will show up here."
-            action={{ label: "Start Planning", onClick: () => navigate("/plan") }}
+            title={t.home.noActiveJourney}
+            description={t.home.noActiveJourneyDesc}
+            action={{ label: t.home.startPlanning, onClick: () => navigate("/plan") }}
           />
         </div>
       )}
@@ -172,7 +174,7 @@ export function HomeScreen() {
       {/* Destinations */}
       {destinations.length > 0 && (
         <div className="px-5">
-          <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">Destinations</h3>
+          <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">{t.home.destinations}</h3>
           <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-5 px-5 pb-1">
             {destinations.map((dest) => (
               <button
@@ -201,12 +203,12 @@ export function HomeScreen() {
             <Buddy state="idle" size="mini" mode="video" />
           </div>
           <div>
-            <h3 className="font-semibold text-sm text-text">Plan Next Move</h3>
+            <h3 className="font-semibold text-sm text-text">{t.home.planNextMove}</h3>
             <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
-              Let our concierge find the perfect hidden gem for your tonight's dinner.
+              {t.home.planNextMoveDesc}
             </p>
             <button className="text-xs text-primary font-medium mt-2 flex items-center gap-1">
-              Explore Map <span aria-hidden>→</span>
+              {t.home.exploreMap} <span aria-hidden>→</span>
             </button>
           </div>
         </Card>
@@ -224,8 +226,8 @@ export function HomeScreen() {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-medium text-text">Calendar</p>
-            <p className="text-xs text-text-secondary">{todayEvents.length} Events Today</p>
+            <p className="text-sm font-medium text-text">{t.home.calendar}</p>
+            <p className="text-xs text-text-secondary">{t.home.eventsToday(todayEvents.length)}</p>
           </div>
         </Card>
 
@@ -239,11 +241,11 @@ export function HomeScreen() {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-medium text-text">Budget Tracker</p>
+            <p className="text-sm font-medium text-text">{t.home.budgetTracker}</p>
             <p className="text-xs text-text-secondary">
               {budget
                 ? `$${totalSpent.toLocaleString()} of $${budget.totalPlanned.amount.toLocaleString()}`
-                : "You're on track"}
+                : t.home.onTrack}
             </p>
           </div>
         </Card>
@@ -270,11 +272,11 @@ export function HomeScreen() {
               height="200px"
             />
             <div className="px-3 py-2">
-              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">Explore Nearby</p>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">{t.home.exploreNearby}</p>
               <p className="text-xs text-text-secondary">
                 {nearbyPOIs.filter((p) => !p.id.startsWith("demo-")).length > 0
-                  ? `${nearbyPOIs.filter((p) => !p.id.startsWith("demo-")).length} places discovered near you`
-                  : "Your location — tap map to explore"}
+                  ? t.home.placesNearby(nearbyPOIs.filter((p) => !p.id.startsWith("demo-")).length)
+                  : t.home.yourLocation}
               </p>
             </div>
           </Card>
@@ -289,17 +291,17 @@ export function HomeScreen() {
               <div className="w-8 h-8 rounded-full overflow-hidden">
                 <Buddy state="idle" size="mini" mode="video" />
               </div>
-              <h3 className="font-semibold text-sm">Buddy Reflection</h3>
+              <h3 className="font-semibold text-sm">{t.home.buddyReflection}</h3>
             </div>
             <p className="text-xs text-text-secondary italic leading-relaxed">
               "{reflectionText}"
             </p>
             <div className="flex gap-2 mt-4">
               <Button className="!text-xs !px-4 !py-2" onClick={handleAcceptSuggestion}>
-                Accept Suggestion
+                {t.home.acceptSuggestion}
               </Button>
               <Button variant="ghost" className="!text-xs !px-4 !py-2" onClick={handleTellMeMore}>
-                Tell me more
+                {t.home.tellMeMore}
               </Button>
             </div>
           </Card>
@@ -310,14 +312,14 @@ export function HomeScreen() {
       <div className="px-5">
         <div className="flex items-end justify-between mb-3">
           <div>
-            <h2 className="text-xl font-bold font-serif">Upcoming Dreams</h2>
+            <h2 className="text-xl font-bold font-serif">{t.home.upcomingDreams}</h2>
             <p className="text-xs text-text-secondary mt-0.5">
-              The journeys that live in your heart
+              {t.home.upcomingDreamsDesc}
             </p>
           </div>
           <div className="flex gap-1">
-            <span className="text-xs font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">Bucket</span>
-            <span className="text-xs font-medium text-text-muted px-3 py-1">List</span>
+            <span className="text-xs font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">{t.home.bucket}</span>
+            <span className="text-xs font-medium text-text-muted px-3 py-1">{t.home.list}</span>
           </div>
         </div>
       </div>
