@@ -55,7 +55,7 @@ export function useUserHistory(): {
           supabase.from("destinations").select("trip_id, name"),
           supabase.from("activities").select("type, status, trip_id"),
           supabase.from("expenses").select("amount, category, trip_id"),
-          supabase.from("budgets").select("trip_id, total_planned"),
+          supabase.from("budgets").select("trip_id, total_planned_amount"),
           supabase.from("travel_profiles").select("*").eq("user_id", user!.id).single(),
         ]);
 
@@ -99,7 +99,7 @@ export function useUserHistory(): {
 
       // Budget patterns
       const totalSpent = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-      const totalPlanned = budgets.reduce((s, b) => s + (b.total_planned || 0), 0);
+      const totalPlanned = budgets.reduce((s, b) => s + (b.total_planned_amount || 0), 0);
       const totalDays = pastTrips.reduce((s, t) => s + t.duration, 0) || 1;
       const avgDailySpend = Math.round(totalSpent / totalDays);
       const budgetAccuracy = totalPlanned > 0 ? +(totalSpent / totalPlanned).toFixed(2) : 1;
