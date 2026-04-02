@@ -21,6 +21,7 @@ import {
   type PersonalityContext,
 } from "../../services/buddyPersonality";
 import type { UserHistory } from "../../hooks/useUserHistory";
+import { useSettingsStore } from "../../stores/settingsStore";
 
 const demoResponses: Record<string, string> = {
   default:
@@ -94,6 +95,7 @@ export function BuddyPanel({ history }: BuddyPanelProps) {
   const nearbyPOIs = useLocationStore((s) => s.nearbyPOIs);
   const setMood = useBuddyStore((s) => s.setMood);
   const profile = useProfileStore((s) => s.profile);
+  const voiceRecitation = useSettingsStore((s) => s.voiceRecitation);
   const navigate = useNavigate();
   const feedRef = useRef<HTMLDivElement>(null);
 
@@ -138,8 +140,8 @@ export function BuddyPanel({ history }: BuddyPanelProps) {
     setProcessing(false);
     setMood("idle");
 
-    // TTS
-    speak(responseText).catch(() => {});
+    // TTS — only if recitation is enabled in settings
+    if (voiceRecitation) speak(responseText).catch(() => {});
 
     // Handle LLM-extracted action
     if (action) {

@@ -19,6 +19,17 @@
   --font-sans: "Inter", system-ui, sans-serif;
 }
 
+/* Dark theme overrides */
+[data-theme="dark"] {
+  --color-cream: #1A1F1E;
+  --color-cream-dark: #252D2B;
+  --color-surface: #1E2624;
+  --color-text: #F0EDE8;
+  --color-text-secondary: #A8B5B2;
+  --color-text-muted: #6B7F7C;
+  --color-buddy-overlay: rgba(30, 38, 36, 0.97);
+}
+
 * {
   box-sizing: border-box;
 }

@@ -12,6 +12,8 @@ import { useProfile } from "../hooks/useProfile";
 import { TagInput } from "../components/profile/TagInput";
 import { SliderField } from "../components/profile/SliderField";
 import { supabase } from "../services/supabase";
+import { useSettingsStore, LANGUAGE_LABELS } from "../stores/settingsStore";
+import type { Theme, Language } from "../stores/settingsStore";
 
 const PACE_LABELS = ["Very Slow", "Slow", "Moderate", "Fast", "Very Fast"];
 const BUDGET_OPTIONS = ["budget", "moderate", "luxury"] as const;
@@ -451,6 +453,9 @@ export function ProfileScreen() {
         </Card>
       </div>
 
+      {/* ── System Settings ── */}
+      <SystemSettings />
+
       {/* ── Account ── */}
       <div className="px-5 pb-6 space-y-3">
         <Card>
@@ -538,6 +543,79 @@ function ToggleSwitch({ checked, onToggle }: { checked: boolean; onToggle: () =>
         }`}
       />
     </button>
+  );
+}
+
+function SystemSettings() {
+  const { theme, language, voiceRecitation, setTheme, setLanguage, setVoiceRecitation } =
+    useSettingsStore();
+
+  const THEME_OPTIONS: { value: Theme; label: string; icon: string }[] = [
+    { value: "light", label: "Light", icon: "☀️" },
+    { value: "dark", label: "Dark", icon: "🌙" },
+    { value: "auto", label: "Auto", icon: "⚙️" },
+  ];
+
+  return (
+    <div className="px-5">
+      <Card>
+        <h3 className="text-sm font-semibold mb-3">System Settings</h3>
+        <div className="space-y-4">
+          {/* Theme */}
+          <Field label="Theme">
+            <div className="flex gap-2">
+              {THEME_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setTheme(opt.value)}
+                  className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl text-xs font-medium transition-colors ${
+                    theme === opt.value
+                      ? "bg-primary text-white"
+                      : "bg-cream-dark text-text-secondary"
+                  }`}
+                >
+                  <span className="text-base">{opt.icon}</span>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Language */}
+          <Field label="Language">
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.entries(LANGUAGE_LABELS) as [Language, string][]).map(([code, label]) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => setLanguage(code)}
+                  className={`py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    language === code
+                      ? "bg-primary text-white"
+                      : "bg-cream-dark text-text-secondary"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Voice Recitation */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Voice Recitation</p>
+              <p className="text-[10px] text-text-muted">Buddy reads replies aloud</p>
+            </div>
+            <ToggleSwitch
+              checked={voiceRecitation}
+              onToggle={() => setVoiceRecitation(!voiceRecitation)}
+            />
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }
 
