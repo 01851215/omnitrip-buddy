@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { usePlanningStore } from "../stores/planningStore";
 import { useActiveTrip, useDreamTrips, useDestinations, updateTripStatus } from "../hooks/useTrips";
 import { useExpenses, useBudget } from "../hooks/useExpenses";
 import { useAllCalendarEvents } from "../hooks/useCalendarEvents";
@@ -30,10 +31,12 @@ export function HomeScreen() {
   const [reflectionDismissed, setReflectionDismissed] = useState(false);
   const [reflectionText, setReflectionText] = useState(DEFAULT_REFLECTION);
   const tripId = trip?.id;
-  const expenses = useExpenses(tripId);
-  const budget = useBudget(tripId);
+  const { expenses } = useExpenses(tripId);
+  const { budget } = useBudget(tripId);
   const { events } = useAllCalendarEvents();
-  const dreams = useDreamTrips();
+  const { trips: dreams } = useDreamTrips();
+  const [dreamView, setDreamView] = useState<"bucket" | "list">("bucket");
+  const { setQuery: setPlanningQuery } = usePlanningStore();
   const destinations = useDestinations(tripId);
   const { profile } = useProfile();
   const { lat, lng, nearbyPOIs } = useLocationStore();
@@ -317,26 +320,105 @@ export function HomeScreen() {
               {t.home.upcomingDreamsDesc}
             </p>
           </div>
-          <div className="flex gap-1">
-            <span className="text-xs font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">{t.home.bucket}</span>
-            <span className="text-xs font-medium text-text-muted px-3 py-1">{t.home.list}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate("/dreams")}
+              className="text-xs text-primary font-medium"
+            >
+              {t.dreams.seeAll} →
+            </button>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setDreamView("bucket")}
+                className={`text-xs font-medium px-3 py-1 rounded-full transition-colors ${
+                  dreamView === "bucket"
+                    ? "text-primary bg-primary/10"
+                    : "text-text-muted hover:bg-cream-dark"
+                }`}
+              >
+                {t.home.bucket}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDreamView("list")}
+                className={`text-xs font-medium px-3 py-1 rounded-full transition-colors ${
+                  dreamView === "list"
+                    ? "text-primary bg-primary/10"
+                    : "text-text-muted hover:bg-cream-dark"
+                }`}
+              >
+                {t.home.list}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto px-5 pb-2 scrollbar-hide">
-        {dreams.map((dream) => (
-          <div key={dream.id} className="min-w-[260px] rounded-2xl overflow-hidden bg-surface shadow-sm border border-cream-dark">
-            {dream.coverImage && (
-              <img src={dream.coverImage} alt={dream.title} className="w-full h-36 object-cover" />
-            )}
-            <div className="p-4">
-              <h3 className="font-semibold text-sm">{dream.title}</h3>
-              <p className="text-xs text-text-secondary mt-1 line-clamp-2">{dream.description}</p>
+      {dreams.length === 0 ? (
+        <div className="px-5">
+          <button
+            type="button"
+            onClick={() => navigate("/dreams")}
+            className="w-full py-6 rounded-2xl border-2 border-dashed border-cream-dark text-sm text-text-muted flex flex-col items-center gap-1 hover:bg-cream-dark transition-colors"
+          >
+            <span className="text-2xl">✈️</span>
+            <span>{t.dreams.emptyTitle}</span>
+            <span className="text-xs">{t.dreams.addDream} →</span>
+          </button>
+        </div>
+      ) : dreamView === "bucket" ? (
+        <div className="flex gap-4 overflow-x-auto px-5 pb-2 scrollbar-hide">
+          {dreams.map((dream) => (
+            <div key={dream.id} className="min-w-[220px] rounded-2xl overflow-hidden bg-surface shadow-sm border border-cream-dark flex-shrink-0">
+              {dream.coverImage ? (
+                <img src={dream.coverImage} alt={dream.title} className="w-full h-32 object-cover" />
+              ) : (
+                <div className="w-full h-32 bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center text-3xl">
+                  🌍
+                </div>
+              )}
+              <div className="p-3">
+                <h3 className="font-semibold text-sm">{dream.title}</h3>
+                <p className="text-xs text-text-secondary mt-1 line-clamp-2">{dream.description}</p>
+                <button
+                  type="button"
+                  onClick={() => { setPlanningQuery(dream.title); navigate("/plan"); }}
+                  className="mt-2 text-[11px] font-medium text-primary"
+                >
+                  {t.dreams.planThis}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="px-5 space-y-2">
+          {dreams.map((dream) => (
+            <div key={dream.id} className="flex items-center gap-3 bg-surface rounded-xl border border-cream-dark p-3">
+              {dream.coverImage ? (
+                <img src={dream.coverImage} alt={dream.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center text-lg flex-shrink-0">
+                  🌍
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm truncate">{dream.title}</p>
+                <p className="text-xs text-text-secondary line-clamp-1">{dream.description}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setPlanningQuery(dream.title); navigate("/plan"); }}
+                className="text-xs font-medium text-primary flex-shrink-0"
+              >
+                {t.dreams.plan}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

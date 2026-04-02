@@ -5,3 +5,4 @@ dist
 .claude/
 .playwright-cli/
 output/
+.vercel

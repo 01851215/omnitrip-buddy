@@ -12,6 +12,7 @@ const BudgetScreen = lazy(() => import("./screens/BudgetScreen").then((m) => ({ 
 const FootprintsScreen = lazy(() => import("./screens/FootprintsScreen").then((m) => ({ default: m.FootprintsScreen })));
 const ProfileScreen = lazy(() => import("./screens/ProfileScreen").then((m) => ({ default: m.ProfileScreen })));
 const DestinationDetailScreen = lazy(() => import("./screens/DestinationDetailScreen").then((m) => ({ default: m.DestinationDetailScreen })));
+const DreamsScreen = lazy(() => import("./screens/DreamsScreen").then((m) => ({ default: m.DreamsScreen })));
 const ResetPasswordScreen = lazy(() => import("./screens/ResetPasswordScreen").then((m) => ({ default: m.ResetPasswordScreen })));
 const OAuthCallbackScreen = lazy(() => import("./screens/OAuthCallbackScreen").then((m) => ({ default: m.OAuthCallbackScreen })));
 
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       { path: "/footprints", element: <LazyScreen><FootprintsScreen /></LazyScreen> },
       { path: "/profile", element: <LazyScreen><ProfileScreen /></LazyScreen> },
       { path: "/destination/:id", element: <LazyScreen><DestinationDetailScreen /></LazyScreen> },
+      { path: "/dreams", element: <LazyScreen><DreamsScreen /></LazyScreen> },
     ],
   },
   {

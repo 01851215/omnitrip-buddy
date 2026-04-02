@@ -18,6 +18,7 @@ import { useUserHistory, historyToPromptContext } from "../hooks/useUserHistory"
 import { searchDeals } from "../services/searchApi";
 import { DealsPanel } from "../components/booking/DealsPanel";
 import { useBookings } from "../hooks/useBookings";
+import { useT } from "../i18n/useT";
 
 const suggestedPrompts = [
   "A quiet weekend in the Swiss Alps",
@@ -66,6 +67,7 @@ export function PlanningScreen() {
   const constraintsRef = useRef<PlanningConstraints>({});
   const activeTripId = Object.values(createdTrips)[0];
   const { bookings } = useBookings(activeTripId);
+  const t = useT();
 
   const buildConstraints = (): PlanningConstraints => {
     const c: PlanningConstraints = {};
@@ -394,10 +396,9 @@ export function PlanningScreen() {
     <div className="space-y-5">
       {/* Header */}
       <div className="px-5 pt-6">
-        <h1 className="text-3xl font-bold font-serif">The Planning Studio</h1>
+        <h1 className="text-3xl font-bold font-serif">{t.planning.title}</h1>
         <p className="text-sm text-text-secondary mt-2 leading-relaxed">
-          Craft your next escape with intuitive guidance. Tell OmniBuddy where
-          your heart is leaning, and we'll handle the logistics.
+          {t.planning.subtitle}
         </p>
       </div>
 
@@ -410,7 +411,7 @@ export function PlanningScreen() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-              placeholder="Where do you want to explore?"
+              placeholder={t.planning.searchPlaceholder}
               className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-text-muted"
             />
             <button
@@ -456,7 +457,7 @@ export function PlanningScreen() {
           >
             <polyline points="9 6 15 12 9 18" />
           </svg>
-          Refine your trip
+          {t.planning.refineTrip}
         </button>
 
         {showConstraints && (
@@ -464,7 +465,7 @@ export function PlanningScreen() {
             {/* Budget */}
             <div>
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
-                Daily Budget
+                {t.planning.dailyBudget}
               </p>
               <div className="flex gap-2 flex-wrap">
                 {BUDGET_PRESETS.map((p) => (
@@ -481,7 +482,7 @@ export function PlanningScreen() {
                         : "bg-surface border-cream-dark text-text-muted"
                     }`}
                   >
-                    {p.label}
+                    {t.budget[p.value]}
                     <span className="text-[10px] opacity-70 ml-1">
                       ~${p.amount}/day
                     </span>
@@ -498,7 +499,7 @@ export function PlanningScreen() {
                       setCustomBudget(e.target.value);
                       setBudgetStyle(null);
                     }}
-                    placeholder="Custom"
+                    placeholder={t.planning.custom}
                     className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
                   />
                 </div>
@@ -508,7 +509,7 @@ export function PlanningScreen() {
             {/* Dates */}
             <div>
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
-                Travel Dates
+                {t.planning.travelDates}
               </p>
               <div className="flex gap-2">
                 <input
@@ -517,7 +518,7 @@ export function PlanningScreen() {
                   onChange={(e) => setStartDate(e.target.value)}
                   className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
                 />
-                <span className="text-text-muted text-xs self-center">to</span>
+                <span className="text-text-muted text-xs self-center">{t.planning.to}</span>
                 <input
                   type="date"
                   value={endDate}
@@ -530,7 +531,7 @@ export function PlanningScreen() {
             {/* Activities Per Day */}
             <div>
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
-                Activities Per Day
+                {t.planning.activitiesPerDay}
               </p>
               <div className="flex gap-2">
                 {INTENSITY_OPTIONS.map((opt) => (
@@ -546,7 +547,9 @@ export function PlanningScreen() {
                         : "bg-surface border-cream-dark text-text-muted"
                     }`}
                   >
-                    <p className="text-xs font-medium">{opt.label}</p>
+                    <p className="text-xs font-medium">
+                      {opt.value === "relaxed" ? t.planning.relaxed : opt.value === "balanced" ? t.planning.balanced : t.planning.packed}
+                    </p>
                     <p className="text-[10px] opacity-70">{opt.sub}</p>
                   </button>
                 ))}
@@ -558,7 +561,7 @@ export function PlanningScreen() {
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10">
                 <span className="text-primary text-sm">&#9733;</span>
                 <p className="text-[11px] text-primary/80">
-                  Personalized from {history.pastTrips.length} past trip{history.pastTrips.length > 1 ? "s" : ""} &amp; your travel profile
+                  {t.planning.personalizedFrom(history.pastTrips.length)}
                 </p>
               </div>
             )}
@@ -573,7 +576,7 @@ export function PlanningScreen() {
             <Buddy state="thinking" size="mini" mode="video" />
           </div>
           <p className="text-sm text-text-secondary animate-pulse">
-            OmniBuddy is thinking...
+            {t.planning.thinking}
           </p>
         </div>
       )}
@@ -583,7 +586,7 @@ export function PlanningScreen() {
         <>
           <div className="px-5 space-y-2">
             <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">
-              Suggested
+              {t.planning.suggested}
             </p>
             {suggestedPrompts.map((p) => (
               <button
@@ -601,9 +604,9 @@ export function PlanningScreen() {
           <div className="px-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold font-serif">
-                Popular Destinations
+                {t.planning.popularDestinations}
               </h2>
-              <span className="text-[10px] text-text-muted">Curated</span>
+              <span className="text-[10px] text-text-muted">{t.planning.curated}</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {templates.map((tpl) => (
@@ -660,7 +663,7 @@ export function PlanningScreen() {
               onClick={() => resetPlanning()}
               className="text-xs text-primary font-medium"
             >
-              &larr; Back to destinations
+              ← {t.planning.backToDestinations}
             </button>
           </div>
 
@@ -668,10 +671,10 @@ export function PlanningScreen() {
           <div className="px-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold font-serif">
-                Top Route Matches
+                {t.planning.topRouteMatches}
               </h2>
               <span className="text-[10px] text-text-muted">
-                Best Travel Fit Mix
+                {t.planning.bestFit}
               </span>
             </div>
             <div className="space-y-4">
@@ -689,7 +692,7 @@ export function PlanningScreen() {
                       />
                       {route.recommended && (
                         <span className="absolute top-3 left-3 bg-primary text-white text-[9px] uppercase tracking-wider font-medium px-2.5 py-1 rounded-full">
-                          Recommended
+                          {t.planning.recommended}
                         </span>
                       )}
                     </div>
@@ -726,7 +729,7 @@ export function PlanningScreen() {
                             className="!text-xs !px-4 !py-2 !bg-success"
                             onClick={() => navigate("/calendar", { state: { focusDate: tripStartDates[route.id] } })}
                           >
-                            📅 Go to Calendar
+                            📅 {t.planning.goToCalendar}
                           </Button>
                         ) : (
                           <Button
@@ -735,8 +738,8 @@ export function PlanningScreen() {
                             onClick={() => handleAddToTrip(route)}
                           >
                             {addingTrip === route.id
-                              ? "Creating..."
-                              : "Add to Trip"}
+                              ? t.planning.creating
+                              : t.planning.addToTrip}
                           </Button>
                         )}
                       </div>
@@ -763,7 +766,7 @@ export function PlanningScreen() {
           {mapCenter && mapMarkers.length > 0 && (
             <div className="px-5">
               <h2 className="text-lg font-bold font-serif mb-3">
-                Destinations Overview
+                {t.planning.destinationsOverview}
               </h2>
               <div className="rounded-xl overflow-hidden">
                 <LeafletMap
@@ -785,10 +788,10 @@ export function PlanningScreen() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-primary">
-                    OmniBuddy Insights
+                    {t.planning.omniBuddyInsights}
                   </p>
                   <p className="text-[9px] text-text-muted">
-                    AI-powered suggestion
+                    {t.planning.aiPowered}
                   </p>
                 </div>
               </div>
@@ -796,7 +799,7 @@ export function PlanningScreen() {
                 &ldquo;{result.insight.text}&rdquo;
               </p>
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
-                Why This Works
+                {t.planning.whyThisWorks}
               </p>
               <ul className="space-y-1.5">
                 {result.insight.reasons.map((r) => (
@@ -817,7 +820,7 @@ export function PlanningScreen() {
                   setQuery("");
                 }}
               >
-                Adjust Preferences
+                {t.planning.adjustPreferences}
               </Button>
             </Card>
           </div>

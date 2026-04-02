@@ -67,14 +67,37 @@ export function useAllTrips() {
 export function useDreamTrips() {
   const { user } = useAuthContext();
   const [trips, setTrips] = useState<DreamTrip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setLoading(false); return; }
+    setLoading(true);
     supabase.from("dream_trips").select("*").eq("user_id", user.id)
-      .then(({ data }) => setTrips((data ?? []).map(mapDreamTrip as any)));
-  }, [user]);
+      .then(({ data }) => { setTrips((data ?? []).map(mapDreamTrip as any)); setLoading(false); });
+  }, [user, version]);
 
-  return trips;
+  const refresh = useCallback(() => setVersion((v) => v + 1), []);
+
+  const createDreamTrip = useCallback(async (title: string, description: string, coverImage?: string): Promise<boolean> => {
+    if (!user) return false;
+    const { error } = await supabase.from("dream_trips").insert({
+      user_id: user.id,
+      title,
+      description,
+      cover_image: coverImage ?? null,
+    });
+    if (!error) refresh();
+    return !error;
+  }, [user, refresh]);
+
+  const deleteDreamTrip = useCallback(async (id: string): Promise<boolean> => {
+    const { error } = await supabase.from("dream_trips").delete().eq("id", id);
+    if (!error) refresh();
+    return !error;
+  }, [refresh]);
+
+  return { trips, loading, refresh, createDreamTrip, deleteDreamTrip };
 }
 
 export function useDestinations(tripId?: string) {
