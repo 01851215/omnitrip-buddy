@@ -1,11 +1,12 @@
 node_modules
 .git
 dist
-*.mp4
-*.webm
-buddy.png
-side.jpg
-side2 copy 2.jpg
-back.jpg
+/*.mp4
+/idle-vp9-chrome.webm
+/goulding-vp9-chrome.webm
+/buddy.png
+/side.jpg
+/side2 copy 2.jpg
+/back.jpg
 SPEC.md
 README.md
