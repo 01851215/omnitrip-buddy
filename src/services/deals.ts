@@ -148,29 +148,6 @@ export function generateDeals(
     },
   ];
 
-  // Multi-destination inter-segment flights
-  if (destinations.length > 1) {
-    for (let i = 0; i < destinations.length - 1; i++) {
-      const from = destinations[i];
-      const to = destinations[i + 1];
-      flights.push({
-        id: `fl-seg-${i}`,
-        category: "flights",
-        title: `${from.name} → ${to.name}`,
-        subtitle: `Inter-destination leg · ${to.country}`,
-        priceFrom: priceVariant(180, from.name + to.name, 120),
-        currency: "USD",
-        rating: 4.1,
-        reviewCount: 980,
-        image: "https://images.unsplash.com/photo-1503146695891-2411a69365de?w=400&q=80",
-        affiliateLinks: [
-          skyscannerFlight(from.name, to.name, from.departureDate),
-          googleFlights(from.name, to.name, from.departureDate),
-        ],
-      });
-    }
-  }
-
   // ── Hotels ────────────────────────────────────────────────────────────────
   const hotels: Deal[] = destinations.flatMap((dest, di) => [
     {

@@ -9,6 +9,7 @@ export interface MapMarker {
   name: string;
   category?: string;
   popup?: string;
+  label?: string; // numbered badge, e.g. "1", "2", "3"
 }
 
 interface LeafletMapProps {
@@ -21,6 +22,26 @@ interface LeafletMapProps {
   zoomControl?: boolean;
   className?: string;
   height?: string;
+}
+
+function numberedIcon(label: string) {
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+      width: 28px; height: 28px;
+      background: #2D6A5A;
+      border: 2.5px solid white;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: Inter, sans-serif;
+      font-size: 12px; font-weight: 700;
+      color: white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    ">${label}</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -16],
+  });
 }
 
 // Fix Leaflet default icon path issue with bundlers
@@ -108,10 +129,12 @@ export function LeafletMap({
     markersLayerRef.current.clearLayers();
 
     markers.forEach((m) => {
-      const marker = L.marker([m.lat, m.lng], { icon: defaultIcon });
+      const icon = m.label ? numberedIcon(m.label) : defaultIcon;
+      const marker = L.marker([m.lat, m.lng], { icon });
       if (m.popup || m.name) {
         marker.bindPopup(
           `<div style="font-family: Inter, sans-serif; font-size: 12px;">
+            ${m.label ? `<span style="display:inline-block;background:#2D6A5A;color:white;border-radius:50%;width:18px;height:18px;text-align:center;line-height:18px;font-size:11px;font-weight:700;margin-right:5px;">${m.label}</span>` : ""}
             <strong>${m.name}</strong>
             ${m.category ? `<br/><span style="color: #6B7280;">${m.category}</span>` : ""}
           </div>`

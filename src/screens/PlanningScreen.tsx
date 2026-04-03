@@ -359,55 +359,30 @@ export function PlanningScreen() {
     }
   };
 
-  // Build map markers from all route suggestions
-  const mapMarkers: MapMarker[] = useMemo(() => {
-    if (!result) return [];
-    const markers: MapMarker[] = [];
-    for (const route of result.routes) {
-      // Prefer generatedData destinations
-      const dests = route.generatedData?.destinations;
-      if (dests) {
-        for (const d of dests) {
-          markers.push({
-            id: `${route.id}-${d.name}`,
-            lat: d.lat,
-            lng: d.lng,
-            name: d.name,
-            popup: `${d.name}, ${d.country} — ${d.days}d`,
-          });
-        }
-      } else {
-        // Fall back to template destinations
-        const tpl = templates.find((t) => t.id === route.templateId);
-        if (tpl) {
-          for (const d of tpl.destinations) {
-            markers.push({
-              id: `${route.id}-${d.name}`,
-              lat: d.lat,
-              lng: d.lng,
-              name: d.name,
-              popup: `${d.name}, ${d.country} — ${d.days}d`,
-            });
-          }
-        }
-      }
+  // Build map data from the recommended route only (numbered markers + polyline)
+  const { mapMarkers, mapPolyline, mapCenter, routeBreadcrumb } = useMemo(() => {
+    if (!result || result.routes.length === 0) {
+      return { mapMarkers: [], mapPolyline: undefined, mapCenter: null, routeBreadcrumb: "" };
     }
-    return markers;
-  }, [result]);
-
-  // Determine map center from the recommended route's first destination
-  const mapCenter: [number, number] | null = useMemo(() => {
-    if (!result || result.routes.length === 0) return null;
     const recommended = result.routes.find((r) => r.recommended) ?? result.routes[0];
-    const dests = recommended.generatedData?.destinations;
-    if (dests && dests.length > 0) {
-      return [dests[0].lat, dests[0].lng];
-    }
-    const tpl = templates.find((t) => t.id === recommended.templateId);
-    if (tpl && tpl.destinations.length > 0) {
-      return [tpl.destinations[0].lat, tpl.destinations[0].lng];
-    }
-    return [0, 0];
+    const dests = recommended.generatedData?.destinations
+      ?? templates.find((t) => t.id === recommended.templateId)?.destinations
+      ?? [];
+
+    const markers: MapMarker[] = dests.map((d, i) => ({
+      id: `map-${d.name}`,
+      lat: d.lat,
+      lng: d.lng,
+      name: d.name,
+      label: String(i + 1),
+      popup: `${d.name}, ${d.country}${("days" in d && d.days) ? ` — ${d.days}d` : ""}`,
+    }));
+
+    const polyline: [number, number][] = dests.map((d) => [d.lat, d.lng]);
+    const center: [number, number] | null = dests.length > 0 ? [dests[0].lat, dests[0].lng] : null;
+    const breadcrumb = dests.map((d) => d.name).join(" → ");
+
+    return { mapMarkers: markers, mapPolyline: polyline, mapCenter: center, routeBreadcrumb: breadcrumb };
   }, [result]);
 
   const showResults = result !== null;
@@ -814,15 +789,28 @@ export function PlanningScreen() {
           {/* Destination Map */}
           {mapCenter && mapMarkers.length > 0 && (
             <div className="px-5">
-              <h2 className="text-lg font-bold font-serif mb-3">
+              <h2 className="text-lg font-bold font-serif mb-1">
                 {t.planning.destinationsOverview}
               </h2>
+              {routeBreadcrumb && (
+                <p className="text-xs text-text-secondary mb-3 flex items-center gap-1 flex-wrap">
+                  {routeBreadcrumb.split(" → ").map((city, i, arr) => (
+                    <span key={city} className="flex items-center gap-1">
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-white text-[9px] font-bold">{i + 1}</span>
+                      <span>{city}</span>
+                      {i < arr.length - 1 && <span className="text-primary font-bold">→</span>}
+                    </span>
+                  ))}
+                </p>
+              )}
               <div className="rounded-xl overflow-hidden">
                 <LeafletMap
                   center={mapCenter}
                   zoom={4}
                   markers={mapMarkers}
-                  height="200px"
+                  polyline={mapPolyline}
+                  fitBounds
+                  height="220px"
                 />
               </div>
             </div>
