@@ -38,6 +38,9 @@ export interface Deal {
   image: string;
   badge?: string;
   affiliateLinks: AffiliateLink[];
+  destination?: string;
+  checkIn?: string;
+  checkOut?: string;
 }
 
 // Destination-specific image pool
@@ -161,6 +164,9 @@ export function generateDeals(
       reviewCount: priceVariant(3200, dest.name, 1500),
       image: pickImage(getImages(dest.name), di * 2),
       badge: di === 0 ? "Top rated" : undefined,
+      destination: dest.name,
+      checkIn: dest.arrivalDate,
+      checkOut: dest.departureDate,
       affiliateLinks: [
         bookingComHotel(dest.name, dest.arrivalDate, dest.departureDate),
         hotelsComHotel(dest.name, dest.arrivalDate, dest.departureDate),
@@ -176,6 +182,9 @@ export function generateDeals(
       rating: 4.7,
       reviewCount: priceVariant(1800, dest.name + "a", 900),
       image: pickImage(getImages(dest.name), di * 2 + 1),
+      destination: dest.name,
+      checkIn: dest.arrivalDate,
+      checkOut: dest.departureDate,
       affiliateLinks: [
         airbnbHotel(dest.name, dest.arrivalDate, dest.departureDate),
         hostelworldHotel(dest.name, dest.arrivalDate, dest.departureDate),

@@ -72,6 +72,18 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
         <p className="text-xs font-semibold text-text line-clamp-1">{deal.title}</p>
         <p className="text-[10px] text-text-muted mt-0.5 line-clamp-1">{deal.subtitle}</p>
 
+        {/* Check-in / check-out pill for hotels */}
+        {deal.category === "hotels" && (deal as any).checkIn && (deal as any).checkOut && (
+          <div className="flex items-center gap-1 mt-1.5 bg-primary/8 rounded-md px-2 py-1">
+            <span className="text-[9px]">📅</span>
+            <span className="text-[10px] text-primary font-medium">
+              {new Date((deal as any).checkIn).toLocaleDateString("en", { month: "short", day: "numeric" })}
+              {" → "}
+              {new Date((deal as any).checkOut).toLocaleDateString("en", { month: "short", day: "numeric" })}
+            </span>
+          </div>
+        )}
+
         {/* Rating */}
         {deal.rating && (
           <div className="flex items-center gap-1 mt-1.5">

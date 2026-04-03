@@ -21,6 +21,9 @@ export interface LiveDeal {
   bookable: boolean;
   affiliateUrl?: string;
   amadeusOfferId?: string;
+  destination?: string;
+  checkIn?: string;
+  checkOut?: string;
 }
 
 export type LiveDealResult = Record<DealCategory, LiveDeal[]>;
@@ -78,6 +81,9 @@ export async function searchDeals(
         provider: d.affiliateLinks[0]?.provider ?? "Unknown",
         bookable: d.category === "activities",
         affiliateUrl: d.affiliateLinks[0]?.url,
+        destination: d.destination,
+        checkIn: d.checkIn,
+        checkOut: d.checkOut,
       })),
     ]),
   ) as LiveDealResult;
