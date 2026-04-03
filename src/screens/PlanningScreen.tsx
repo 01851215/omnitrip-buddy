@@ -42,6 +42,12 @@ const INTENSITY_OPTIONS = [
   { label: "Packed", value: "packed" as const, sub: "5-6 per day" },
 ] as const;
 
+const REFINEMENT_CHIPS = [
+  "Avoid crowds", "Family-friendly", "Foodie focus",
+  "Hidden gems", "Luxury only", "Off the beaten path",
+  "No theme parks", "Outdoor & nature", "Art & culture",
+];
+
 export function PlanningScreen() {
   const {
     query, setQuery,
@@ -80,6 +86,7 @@ export function PlanningScreen() {
   const [loading, setLoading] = useState(false);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
   const [showAdjustSheet, setShowAdjustSheet] = useState(false);
+  const [refinements, setRefinements] = useState("");
   const { setMood } = useBuddyStore();
   const { user } = useAuthContext();
   const navigate = useNavigate();
@@ -106,9 +113,13 @@ export function PlanningScreen() {
   };
 
   const handleSubmit = async (text?: string) => {
-    const q = (text ?? query).trim();
-    if (!q) return;
+    const baseQ = (text ?? query).trim();
+    if (!baseQ) return;
     if (text) setQuery(text);
+
+    const q = refinements.trim()
+      ? `${baseQ}. Preferences: ${refinements.trim()}`
+      : baseQ;
 
     const constraints = buildConstraints();
     constraintsRef.current = constraints;
@@ -580,6 +591,56 @@ export function PlanningScreen() {
               </div>
             </div>
 
+            {/* Refinements */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
+                Special requests
+              </p>
+              <textarea
+                value={refinements}
+                onChange={(e) => setRefinements(e.target.value)}
+                placeholder="e.g. avoid tourist traps, focus on local food, no beach…"
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40 resize-none"
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {REFINEMENT_CHIPS.map((chip) => {
+                  const active = refinements.includes(chip);
+                  return (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() =>
+                        setRefinements((prev) =>
+                          active
+                            ? prev.replace(chip, "").replace(/,\s*,/g, ",").replace(/^,\s*|,\s*$/g, "").trim()
+                            : prev ? `${prev}, ${chip}` : chip
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-full border text-[10px] font-medium transition-colors ${
+                        active
+                          ? "bg-primary/10 text-primary border-primary/30"
+                          : "bg-surface border-cream-dark text-text-muted"
+                      }`}
+                    >
+                      {chip}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Update Plan button — only when a plan already exists */}
+            {result && (
+              <Button
+                variant="primary"
+                className="w-full !text-xs"
+                onClick={() => handleSubmit()}
+              >
+                ↻ Update Plan
+              </Button>
+            )}
+
             {/* Personalization badge */}
             {history && history.pastTrips.length > 0 && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10">
@@ -1005,6 +1066,45 @@ export function PlanningScreen() {
                     Use GPS
                   </button>
                 )}
+              </div>
+            </div>
+
+            {/* Special requests */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
+                Special requests
+              </p>
+              <textarea
+                value={refinements}
+                onChange={(e) => setRefinements(e.target.value)}
+                placeholder="e.g. avoid tourist traps, focus on local food…"
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40 resize-none"
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {REFINEMENT_CHIPS.map((chip) => {
+                  const active = refinements.includes(chip);
+                  return (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() =>
+                        setRefinements((prev) =>
+                          active
+                            ? prev.replace(chip, "").replace(/,\s*,/g, ",").replace(/^,\s*|,\s*$/g, "").trim()
+                            : prev ? `${prev}, ${chip}` : chip
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-full border text-[10px] font-medium transition-colors ${
+                        active
+                          ? "bg-primary/10 text-primary border-primary/30"
+                          : "bg-surface border-cream-dark text-text-muted"
+                      }`}
+                    >
+                      {chip}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
