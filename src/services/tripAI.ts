@@ -451,6 +451,60 @@ function buildQueryFallbackRoute(
   };
 }
 
+/**
+ * Generates 5 personalised trip suggestion prompts for the planning screen.
+ * Uses the user's travel history, current season, and origin city.
+ */
+export async function generateSuggestedPrompts(
+  originCity: string,
+  historyContext: string,
+): Promise<string[]> {
+  const month = new Date().toLocaleString("en", { month: "long" });
+  const year = new Date().getFullYear();
+
+  const prompt = `You are OmniBuddy, an AI travel planner.
+Generate exactly 5 short, inspiring trip suggestion prompts for a traveller.
+
+Context:
+- They are based in: ${originCity || "an unknown city"}
+- Current month: ${month} ${year}
+- Their travel history and preferences:
+${historyContext || "No history available — use general travel trends"}
+
+Rules:
+- Each prompt should be 4–10 words, vivid and specific
+- Include the destination name
+- Reference the origin or travel time when natural (e.g. "Weekend escape from ${originCity}")
+- Reflect the current season (${month} is ${["December","January","February"].includes(month) ? "winter" : ["March","April","May"].includes(month) ? "spring" : ["June","July","August"].includes(month) ? "summer" : "autumn"} in the northern hemisphere)
+- Lean into their favourite activity types and avoid their dislikes
+- Vary the style: mix weekend breaks, week-long trips, specific experiences
+- Do NOT repeat destinations they just visited
+
+Return ONLY a JSON array of 5 strings, no explanation, no markdown:
+["prompt 1","prompt 2","prompt 3","prompt 4","prompt 5"]`;
+
+  try {
+    const raw = await callChatGPT(prompt, "gpt-4o-mini");
+    const match = raw?.match(/\[[\s\S]*?\]/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      if (Array.isArray(parsed) && parsed.length >= 3) return parsed.slice(0, 5);
+    }
+  } catch {
+    // fall through to defaults
+  }
+
+  // Fallback prompts with origin + season context
+  const season = ["December","January","February"].includes(month) ? "winter" : ["June","July","August"].includes(month) ? "summer" : "spring";
+  return [
+    originCity ? `Weekend escape from ${originCity}` : "A quiet weekend getaway",
+    `${season === "winter" ? "Warm winter sun in" : season === "summer" ? "Summer adventure in" : "Spring blooms in"} Japan`,
+    "Coastal drive through Portugal",
+    "Hidden gems of Southeast Asia",
+    "A week of culture in Italy",
+  ];
+}
+
 export async function generateBuddyResponse(
   message: string,
   context?: string,

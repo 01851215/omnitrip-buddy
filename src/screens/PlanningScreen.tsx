@@ -10,6 +10,7 @@ import { supabase } from "../services/supabase";
 import { templates } from "../data/templates";
 import {
   generateTripSuggestions,
+  generateSuggestedPrompts,
   type RouteSuggestion,
   type PlanningConstraints,
 } from "../services/tripAI";
@@ -22,7 +23,7 @@ import { useT } from "../i18n/useT";
 import { useLocationStore } from "../stores/locationStore";
 import { requestLocation } from "../services/location";
 
-const suggestedPrompts = [
+const DEFAULT_PROMPTS = [
   "A quiet weekend in the Swiss Alps",
   "High-speed train route across Japan",
   "Coastal drive through Portugal",
@@ -87,10 +88,24 @@ export function PlanningScreen() {
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
   const [showAdjustSheet, setShowAdjustSheet] = useState(false);
   const [refinements, setRefinements] = useState("");
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>(DEFAULT_PROMPTS);
+  const [promptsLoading, setPromptsLoading] = useState(false);
   const { setMood } = useBuddyStore();
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const { history } = useUserHistory();
+
+  // Generate AI-personalised prompts when history + origin are ready
+  useEffect(() => {
+    setPromptsLoading(true);
+    const ctx = history ? historyToPromptContext(history) : "";
+    generateSuggestedPrompts(originCity, ctx)
+      .then((prompts) => setSuggestedPrompts(prompts))
+      .finally(() => setPromptsLoading(false));
+  // Re-run when origin city resolves from GPS
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!history, originCity]);
+
   const constraintsRef = useRef<PlanningConstraints>({});
   const activeTripId = Object.values(createdTrips)[0];
   const { bookings } = useBookings(activeTripId);
@@ -673,7 +688,11 @@ export function PlanningScreen() {
             <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium">
               {t.planning.suggested}
             </p>
-            {suggestedPrompts.map((p) => (
+            {promptsLoading
+              ? [1,2,3].map((i) => (
+                  <div key={i} className="w-full h-11 rounded-xl bg-cream animate-pulse" />
+                ))
+              : suggestedPrompts.map((p) => (
               <button
                 key={p}
                 type="button"
