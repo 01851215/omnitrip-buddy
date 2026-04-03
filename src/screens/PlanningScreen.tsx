@@ -60,6 +60,7 @@ export function PlanningScreen() {
 
   const [loading, setLoading] = useState(false);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
+  const [showAdjustSheet, setShowAdjustSheet] = useState(false);
   const { setMood } = useBuddyStore();
   const { user } = useAuthContext();
   const navigate = useNavigate();
@@ -815,14 +816,136 @@ export function PlanningScreen() {
               <Button
                 variant="secondary"
                 className="w-full mt-4 !text-xs"
-                onClick={() => {
-                  setResult(null);
-                  setQuery("");
-                }}
+                onClick={() => setShowAdjustSheet(true)}
               >
                 {t.planning.adjustPreferences}
               </Button>
             </Card>
+          </div>
+        </>
+      )}
+
+      {/* Adjust Preferences bottom sheet */}
+      {showAdjustSheet && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40"
+            onClick={() => setShowAdjustSheet(false)}
+          />
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface rounded-t-2xl p-5 pb-8 space-y-5 max-h-[85vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-text-primary">
+                {t.planning.adjustPreferences}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowAdjustSheet(false)}
+                className="text-text-muted text-lg leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Budget */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
+                {t.planning.dailyBudget}
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                {BUDGET_PRESETS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => {
+                      setBudgetStyle(budgetStyle === p.value ? null : p.value);
+                      setCustomBudget("");
+                    }}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                      budgetStyle === p.value
+                        ? "bg-primary/10 text-primary border-primary/30"
+                        : "bg-surface border-cream-dark text-text-muted"
+                    }`}
+                  >
+                    {t.budget[p.value]}
+                    <span className="text-[10px] opacity-70 ml-1">~${p.amount}/day</span>
+                  </button>
+                ))}
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">$</span>
+                  <input
+                    type="number"
+                    value={customBudget}
+                    onChange={(e) => {
+                      setCustomBudget(e.target.value);
+                      setBudgetStyle(null);
+                    }}
+                    placeholder={t.planning.custom}
+                    className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Dates */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
+                {t.planning.travelDates}
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                />
+                <span className="text-text-muted text-xs self-center">{t.planning.to}</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                />
+              </div>
+            </div>
+
+            {/* Intensity */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
+                {t.planning.activitiesPerDay}
+              </p>
+              <div className="flex gap-2">
+                {INTENSITY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setIntensity(intensity === opt.value ? null : opt.value)}
+                    className={`flex-1 px-3 py-2 rounded-lg border text-center transition-colors ${
+                      intensity === opt.value
+                        ? "bg-primary/10 text-primary border-primary/30"
+                        : "bg-surface border-cream-dark text-text-muted"
+                    }`}
+                  >
+                    <p className="text-xs font-medium">
+                      {opt.value === "relaxed" ? t.planning.relaxed : opt.value === "balanced" ? t.planning.balanced : t.planning.packed}
+                    </p>
+                    <p className="text-[10px] opacity-70">{opt.sub}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Regenerate */}
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={() => {
+                setShowAdjustSheet(false);
+                handleSubmit();
+              }}
+            >
+              Regenerate Plan
+            </Button>
           </div>
         </>
       )}
