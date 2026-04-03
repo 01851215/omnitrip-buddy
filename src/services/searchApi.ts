@@ -24,6 +24,10 @@ export interface LiveDeal {
   destination?: string;
   checkIn?: string;
   checkOut?: string;
+  day?: number;
+  dayDate?: string;
+  timeSlot?: "morning" | "afternoon" | "evening";
+  timeExact?: string;
 }
 
 export type LiveDealResult = Record<DealCategory, LiveDeal[]>;
@@ -84,6 +88,10 @@ export async function searchDeals(
         destination: d.destination,
         checkIn: d.checkIn,
         checkOut: d.checkOut,
+        day: d.day,
+        dayDate: d.dayDate,
+        timeSlot: d.timeSlot,
+        timeExact: d.timeExact,
       })),
     ]),
   ) as LiveDealResult;

@@ -41,6 +41,10 @@ export interface Deal {
   destination?: string;
   checkIn?: string;
   checkOut?: string;
+  day?: number;
+  dayDate?: string;
+  timeSlot?: "morning" | "afternoon" | "evening";
+  timeExact?: string;
 }
 
 // Destination-specific image pool
@@ -234,60 +238,99 @@ export function generateDeals(
   }
 
   // ── Activities ────────────────────────────────────────────────────────────
-  const activityTypes = [
-    { label: "Top experiences", cat: undefined },
-    { label: "Food & cooking tours", cat: "food" },
-    { label: "Cultural & heritage", cat: "culture" },
-    { label: "Adventure & outdoors", cat: "adventure" },
+  // Pool of 8 activity slots — 4 per day max, cycling through time slots
+  const ACTIVITY_POOL = [
+    { label: "Top experiences",        cat: undefined,   timeSlot: "morning"   as const, timeExact: "9:00 AM"  },
+    { label: "Cultural & heritage",    cat: "culture",   timeSlot: "afternoon" as const, timeExact: "2:00 PM"  },
+    { label: "Food & cooking tours",   cat: "food",      timeSlot: "afternoon" as const, timeExact: "12:30 PM" },
+    { label: "Night market & local life", cat: "food",   timeSlot: "evening"   as const, timeExact: "7:00 PM"  },
+    { label: "Adventure & outdoors",   cat: "adventure", timeSlot: "morning"   as const, timeExact: "8:00 AM"  },
+    { label: "City walking tour",      cat: undefined,   timeSlot: "morning"   as const, timeExact: "10:00 AM" },
+    { label: "Photography & viewpoints", cat: undefined, timeSlot: "afternoon" as const, timeExact: "3:30 PM"  },
+    { label: "Wellness & spa",         cat: undefined,   timeSlot: "evening"   as const, timeExact: "6:00 PM"  },
   ];
 
-  const activities: Deal[] = destinations.flatMap((dest, di) =>
-    activityTypes.slice(0, di === 0 ? 4 : 2).map((at, ai) => ({
-      id: `act-${di}-${ai}`,
-      category: "activities" as DealCategory,
-      title: `${at.label} in ${dest.name}`,
-      subtitle: `${dest.country} · Instant confirmation`,
-      priceFrom: priceVariant(25, dest.name + at.label, 50),
-      currency: "USD",
-      rating: 4.6,
-      reviewCount: priceVariant(890, dest.name + ai, 600),
-      image: pickImage(getImages(dest.name), ai),
-      badge: ai === 0 ? "Bestseller" : undefined,
-      affiliateLinks: [
-        viatorActivity(dest.name, at.cat),
-        getYourGuideActivity(dest.name, at.cat),
-        klookActivity(dest.name),
-      ],
-    })),
-  );
+  const activities: Deal[] = destinations.flatMap((dest, di) => {
+    const numDays = Math.max(1, Math.round(
+      (new Date(dest.departureDate).getTime() - new Date(dest.arrivalDate).getTime()) / 86400000,
+    ));
+    const count = Math.min(di === 0 ? numDays * 4 : numDays * 2, ACTIVITY_POOL.length);
+    return ACTIVITY_POOL.slice(0, count).map((at, ai) => {
+      const dayNum = Math.floor(ai / 4) + 1;
+      const d = new Date(dest.arrivalDate);
+      d.setDate(d.getDate() + (dayNum - 1));
+      return {
+        id: `act-${di}-${ai}`,
+        category: "activities" as DealCategory,
+        title: `${at.label} in ${dest.name}`,
+        subtitle: `${dest.country} · Instant confirmation`,
+        priceFrom: priceVariant(25, dest.name + at.label, 50),
+        currency: "USD",
+        rating: 4.6,
+        reviewCount: priceVariant(890, dest.name + ai, 600),
+        image: pickImage(getImages(dest.name), ai),
+        badge: ai === 0 ? "Bestseller" : undefined,
+        destination: dest.name,
+        checkIn: dest.arrivalDate,
+        checkOut: dest.departureDate,
+        day: dayNum,
+        dayDate: d.toISOString().split("T")[0],
+        timeSlot: at.timeSlot,
+        timeExact: at.timeExact,
+        affiliateLinks: [
+          viatorActivity(dest.name, at.cat),
+          getYourGuideActivity(dest.name, at.cat),
+          klookActivity(dest.name),
+        ],
+      };
+    });
+  });
 
   // ── Dining ────────────────────────────────────────────────────────────────
-  const diningTypes = [
-    { label: "Fine dining", img: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&q=80" },
-    { label: "Local cuisine & street food", img: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80" },
-    { label: "Afternoon tea & desserts", img: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&q=80" },
-    { label: "Rooftop bars & cocktails", img: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&q=80" },
+  const DINING_POOL = [
+    { label: "Local cuisine & street food", img: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&q=80", timeSlot: "afternoon" as const, timeExact: "12:30 PM" },
+    { label: "Fine dining",                 img: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&q=80", timeSlot: "evening"   as const, timeExact: "7:00 PM"  },
+    { label: "Afternoon tea & desserts",    img: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&q=80", timeSlot: "afternoon" as const, timeExact: "3:00 PM"  },
+    { label: "Rooftop bars & cocktails",    img: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&q=80", timeSlot: "evening"   as const, timeExact: "8:30 PM"  },
+    { label: "Breakfast cafe",              img: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&q=80", timeSlot: "morning"   as const, timeExact: "8:30 AM"  },
+    { label: "Night market eats",           img: "https://images.unsplash.com/photo-1565299507177-b0ac66763828?w=400&q=80", timeSlot: "evening"   as const, timeExact: "6:30 PM"  },
   ];
 
-  const dining: Deal[] = destinations.flatMap((dest, di) =>
-    diningTypes.slice(0, di === 0 ? 4 : 2).map((dt, dti) => ({
-      id: `din-${di}-${dti}`,
-      category: "dining" as DealCategory,
-      title: `${dt.label} in ${dest.name}`,
-      subtitle: `${dest.country} · Reserve your table`,
-      priceFrom: priceVariant(18, dest.name + dt.label, 30),
-      currency: "USD",
-      rating: 4.5,
-      reviewCount: priceVariant(440, dest.name + dti, 300),
-      image: dt.img,
-      badge: dti === 2 ? "OmniBuddy pick" : undefined,
-      affiliateLinks: [
-        openTableDining(dest.name, dest.arrivalDate),
-        theForkDining(dest.name),
-        tripadvisorRestaurants(dest.name),
-      ],
-    })),
-  );
+  const dining: Deal[] = destinations.flatMap((dest, di) => {
+    const numDays = Math.max(1, Math.round(
+      (new Date(dest.departureDate).getTime() - new Date(dest.arrivalDate).getTime()) / 86400000,
+    ));
+    const count = Math.min(di === 0 ? numDays * 3 : numDays * 2, DINING_POOL.length);
+    return DINING_POOL.slice(0, count).map((dt, dti) => {
+      const dayNum = Math.floor(dti / 3) + 1;
+      const d = new Date(dest.arrivalDate);
+      d.setDate(d.getDate() + (dayNum - 1));
+      return {
+        id: `din-${di}-${dti}`,
+        category: "dining" as DealCategory,
+        title: `${dt.label} in ${dest.name}`,
+        subtitle: `${dest.country} · Reserve your table`,
+        priceFrom: priceVariant(18, dest.name + dt.label, 30),
+        currency: "USD",
+        rating: 4.5,
+        reviewCount: priceVariant(440, dest.name + dti, 300),
+        image: dt.img,
+        badge: dti === 2 ? "OmniBuddy pick" : undefined,
+        destination: dest.name,
+        checkIn: dest.arrivalDate,
+        checkOut: dest.departureDate,
+        day: dayNum,
+        dayDate: d.toISOString().split("T")[0],
+        timeSlot: dt.timeSlot,
+        timeExact: dt.timeExact,
+        affiliateLinks: [
+          openTableDining(dest.name, dest.arrivalDate),
+          theForkDining(dest.name),
+          tripadvisorRestaurants(dest.name),
+        ],
+      };
+    });
+  });
 
   return { flights, hotels, trains, activities, dining };
 }

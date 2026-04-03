@@ -777,6 +777,14 @@ export function PlanningScreen() {
                           tripId={createdTrips[route.id]}
                           userId={user?.id}
                           bookings={bookings}
+                          dailyBudget={
+                            customBudget && !isNaN(parseFloat(customBudget))
+                              ? parseFloat(customBudget)
+                              : budgetStyle
+                                ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount ?? null
+                                : null
+                          }
+                          intensity={intensity}
                         />
                       )}
                     </div>

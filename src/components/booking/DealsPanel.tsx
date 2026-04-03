@@ -20,6 +20,8 @@ interface DealsPanelProps {
   tripId?: string;
   userId?: string;
   bookings?: Booking[];
+  dailyBudget?: number | null;
+  intensity?: "relaxed" | "balanced" | "packed" | null;
 }
 
 const TABS: { key: DealCategory; label: string; emoji: string }[] = [
@@ -38,7 +40,10 @@ const PROVIDER_LOGOS: Record<DealCategory, string> = {
   dining: "OpenTable · TheFork · Tripadvisor",
 };
 
-export function DealsPanel({ deals, destinationNames, isLive, loading, tripId, userId, bookings }: DealsPanelProps) {
+const INTENSITY_PER_DAY: Record<string, number> = { relaxed: 2, balanced: 4, packed: 6 };
+const TIME_SLOT_LABEL: Record<string, string> = { morning: "🌅 Morning", afternoon: "☀️ Afternoon", evening: "🌙 Evening" };
+
+export function DealsPanel({ deals, destinationNames, isLive, loading, tripId, userId, bookings, dailyBudget, intensity }: DealsPanelProps) {
   const [activeTab, setActiveTab] = useState<DealCategory>("flights");
   const activeDeal = deals[activeTab] ?? [];
 
@@ -167,8 +172,111 @@ export function DealsPanel({ deals, destinationNames, isLive, loading, tripId, u
               });
             })()}
           </div>
+        ) : (activeTab === "activities" || activeTab === "dining") ? (
+          /* ── Activities / Dining: destination → day → time timeline ── */
+          (() => {
+            const perDay = intensity ? (INTENSITY_PER_DAY[intensity] ?? 4) : 4;
+            // Budget per item = daily budget ÷ activities per day (rough slice)
+            const budgetPerItem = dailyBudget ? dailyBudget / perDay : null;
+
+            // Group by destination
+            const byDest: Record<string, (Deal | LiveDeal)[]> = {};
+            for (const deal of activeDeal) {
+              const dest = (deal as any).destination ?? "Other";
+              // Filter by budget
+              if (budgetPerItem && deal.priceFrom > budgetPerItem * 1.5) continue;
+              byDest[dest] = [...(byDest[dest] ?? []), deal];
+            }
+            const destEntries = Object.entries(byDest);
+            return (
+              <div className="px-4 pt-3 pb-1 space-y-6">
+                {destEntries.map(([dest, destDeals], di) => {
+                  const checkIn = (destDeals[0] as any).checkIn as string | undefined;
+                  const checkOut = (destDeals[0] as any).checkOut as string | undefined;
+                  const numDays = checkIn && checkOut ? nightsBetween(checkIn, checkOut) : null;
+
+                  // Group by day
+                  const byDay: Record<number, (Deal | LiveDeal)[]> = {};
+                  for (const deal of destDeals) {
+                    const d = (deal as any).day ?? 1;
+                    byDay[d] = [...(byDay[d] ?? []), deal];
+                  }
+                  // Limit per day by intensity
+                  const dayEntries = Object.entries(byDay)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([dayNum, dayDeals]) => [dayNum, dayDeals.slice(0, perDay)] as [string, (Deal | LiveDeal)[]]);
+
+                  return (
+                    <div key={dest} className="relative pl-6">
+                      {di < destEntries.length - 1 && (
+                        <div className="absolute left-[9px] top-6 bottom-[-16px] w-0.5 bg-primary/20" />
+                      )}
+                      {/* Destination header */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="absolute left-0 w-[18px] h-[18px] rounded-full bg-primary text-white text-[9px] font-bold flex items-center justify-center">
+                          {di + 1}
+                        </span>
+                        <span className="text-xs font-semibold text-text">{dest}</span>
+                        {checkIn && checkOut && (
+                          <span className="text-[10px] text-text-muted">
+                            {formatDate(checkIn)} – {formatDate(checkOut)}
+                          </span>
+                        )}
+                        {numDays !== null && (
+                          <span className="ml-auto text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium flex-shrink-0">
+                            {numDays} day{numDays !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Day sections */}
+                      <div className="space-y-3">
+                        {dayEntries.map(([dayNum, dayDeals]) => {
+                          const dayDate = (dayDeals[0] as any).dayDate as string | undefined;
+                          return (
+                            <div key={dayNum}>
+                              {/* Day header */}
+                              <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">
+                                Day {dayNum}{dayDate ? ` — ${formatDate(dayDate)}` : ""}
+                              </p>
+                              {/* Cards grouped by time slot */}
+                              {(["morning", "afternoon", "evening"] as const).map((slot) => {
+                                const slotDeals = dayDeals.filter((d) => (d as any).timeSlot === slot);
+                                if (slotDeals.length === 0) return null;
+                                return (
+                                  <div key={slot} className="mb-2">
+                                    <p className="text-[10px] text-text-muted mb-1.5">{TIME_SLOT_LABEL[slot]}</p>
+                                    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+                                      {slotDeals.map((deal) => (
+                                        <DealCard
+                                          key={deal.id}
+                                          deal={deal}
+                                          tripId={tripId}
+                                          userId={userId}
+                                          booking={findBookingForDeal(deal)}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                {budgetPerItem && (
+                  <p className="text-[9px] text-text-muted text-center pb-1">
+                    Showing options under ${Math.round(budgetPerItem * 1.5)}/item based on your ${dailyBudget}/day budget · {perDay} per day ({intensity ?? "balanced"})
+                  </p>
+                )}
+              </div>
+            );
+          })()
         ) : (
-          /* ── All other tabs: flat horizontal scroll ── */
+          /* ── Flights / Trains: flat horizontal scroll ── */
           <div className="flex gap-3 px-4 overflow-x-auto no-scrollbar pt-3 pb-1">
             {activeDeal.map((deal) => (
               <DealCard
