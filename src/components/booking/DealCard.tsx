@@ -5,6 +5,7 @@ import { recordExternalBooking } from "../../services/searchApi";
 import { CheckoutButton } from "./CheckoutButton";
 import { BookingBadge } from "./BookingBadge";
 import type { Booking } from "../../types";
+import { supabase } from "../../services/supabase";
 
 interface DealCardProps {
   deal: Deal | LiveDeal;
@@ -17,14 +18,73 @@ function isLiveDeal(d: Deal | LiveDeal): d is LiveDeal {
   return "provider" in d && "bookable" in d;
 }
 
+// Derive a sensible start/end datetime for calendar insertion
+function dealToCalendarTimes(deal: Deal | LiveDeal): { startTime: string; endTime: string } | null {
+  const d = deal as any;
+  // Activities/dining: use dayDate + timeExact
+  if ((deal.category === "activities" || deal.category === "dining") && d.dayDate && d.timeExact) {
+    const [timePart, ampm] = d.timeExact.split(" ");
+    const [hStr, mStr] = timePart.split(":");
+    let h = parseInt(hStr, 10);
+    const m = parseInt(mStr, 10);
+    if (ampm === "PM" && h !== 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    const start = new Date(`${d.dayDate}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`);
+    const end = new Date(start.getTime() + (deal.category === "dining" ? 90 : 120) * 60000);
+    return { startTime: start.toISOString(), endTime: end.toISOString() };
+  }
+  // Hotels: full stay (checkIn morning → checkOut morning)
+  if (deal.category === "hotels" && d.checkIn && d.checkOut) {
+    return {
+      startTime: `${d.checkIn}T14:00:00`,
+      endTime: `${d.checkOut}T11:00:00`,
+    };
+  }
+  // Flights/trains: use checkIn date (arrival date of first dest) as rough time
+  if ((deal.category === "flights" || deal.category === "trains") && d.checkIn) {
+    return {
+      startTime: `${d.checkIn}T09:00:00`,
+      endTime: `${d.checkIn}T12:00:00`,
+    };
+  }
+  return null;
+}
+
 export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
   const [markedBooked, setMarkedBooked] = useState(false);
+  const [calAdded, setCalAdded] = useState(false);
+  const [calAdding, setCalAdding] = useState(false);
+  // For flights/hotels: show confirm/reject UI before adding
+  const [showCalConfirm, setShowCalConfirm] = useState(false);
 
   const live = isLiveDeal(deal);
   const affiliateLinks = live ? [] : (deal as Deal).affiliateLinks;
   const primaryUrl = live
     ? (deal as LiveDeal).affiliateUrl
     : affiliateLinks[0]?.url;
+
+  const needsConfirm = deal.category === "flights" || deal.category === "hotels" || deal.category === "trains";
+
+  const handleAddToCalendar = async () => {
+    if (!userId) return;
+    const times = dealToCalendarTimes(deal);
+    if (!times) return;
+    setCalAdding(true);
+    await supabase.from("calendar_events").insert({
+      user_id: userId,
+      trip_id: tripId ?? null,
+      source: "omnitrip",
+      title: deal.title,
+      description: deal.subtitle,
+      start_time: times.startTime,
+      end_time: times.endTime,
+      type: "travel",
+      conflicts_with: [],
+    });
+    setCalAdding(false);
+    setCalAdded(true);
+    setShowCalConfirm(false);
+  };
 
   const handleMarkBooked = async () => {
     if (!userId) return;
@@ -178,6 +238,44 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
               via {deal.provider}
             </span>
           </div>
+        )}
+
+        {/* Add to Calendar */}
+        {userId && !calAdded && (
+          <>
+            {showCalConfirm ? (
+              /* Confirm/reject row for flights, hotels, trains */
+              <div className="mt-2 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowCalConfirm(false)}
+                  className="flex-1 text-[10px] font-medium text-text-muted bg-cream border border-cream-dark px-2 py-1.5 rounded-lg"
+                >
+                  ✕ Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddToCalendar}
+                  disabled={calAdding}
+                  className="flex-1 text-[10px] font-medium text-white bg-primary px-2 py-1.5 rounded-lg disabled:opacity-60"
+                >
+                  {calAdding ? "Adding…" : "✓ Confirm"}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => needsConfirm ? setShowCalConfirm(true) : handleAddToCalendar()}
+                disabled={calAdding}
+                className="w-full mt-2 text-[10px] font-medium text-primary bg-primary/8 border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/15 transition-colors disabled:opacity-60"
+              >
+                📅 Add to Calendar
+              </button>
+            )}
+          </>
+        )}
+        {calAdded && (
+          <p className="mt-2 text-[10px] text-center text-primary font-medium">✓ Added to calendar</p>
         )}
       </div>
     </div>
