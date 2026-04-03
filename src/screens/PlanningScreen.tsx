@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -19,6 +19,8 @@ import { searchDeals } from "../services/searchApi";
 import { DealsPanel } from "../components/booking/DealsPanel";
 import { useBookings } from "../hooks/useBookings";
 import { useT } from "../i18n/useT";
+import { useLocationStore } from "../stores/locationStore";
+import { requestLocation } from "../services/location";
 
 const suggestedPrompts = [
   "A quiet weekend in the Swiss Alps",
@@ -55,8 +57,25 @@ export function PlanningScreen() {
     endDate, setEndDate,
     intensity, setIntensity,
     showConstraints, setShowConstraints,
+    originCity, setOriginCity,
     resetPlanning,
   } = usePlanningStore();
+
+  const { locationName, permission: locationPermission } = useLocationStore();
+
+  // Auto-fill origin from GPS on first load
+  useEffect(() => {
+    if (originCity) return; // already set by user
+    if (locationName) {
+      setOriginCity(locationName);
+    } else if (locationPermission !== "denied") {
+      requestLocation().then(() => {
+        const name = useLocationStore.getState().locationName;
+        if (name) setOriginCity(name);
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
@@ -328,7 +347,7 @@ export function PlanningScreen() {
       });
 
       setDealsLoading((prev) => ({ ...prev, [route.id]: true }));
-      searchDeals(destInputs).then(({ deals, isLive }) => {
+      searchDeals(destInputs, originCity || "My Location").then(({ deals, isLive }) => {
         setRouteDeals((prev) => ({ ...prev, [route.id]: deals }));
         setRouteDealsLive((prev) => ({ ...prev, [route.id]: isLive }));
         setDealsLoading((prev) => ({ ...prev, [route.id]: false }));
@@ -554,6 +573,35 @@ export function PlanningScreen() {
                     <p className="text-[10px] opacity-70">{opt.sub}</p>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Flying from */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
+                Flying from
+              </p>
+              <div className="relative flex items-center">
+                <span className="absolute left-3 text-sm">✈️</span>
+                <input
+                  type="text"
+                  value={originCity}
+                  onChange={(e) => setOriginCity(e.target.value)}
+                  placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                />
+                {locationPermission !== "denied" && !originCity && (
+                  <button
+                    type="button"
+                    onClick={() => requestLocation().then(() => {
+                      const name = useLocationStore.getState().locationName;
+                      if (name) setOriginCity(name);
+                    })}
+                    className="absolute right-2 text-[10px] text-primary font-medium"
+                  >
+                    Use GPS
+                  </button>
+                )}
               </div>
             </div>
 
@@ -932,6 +980,35 @@ export function PlanningScreen() {
                     <p className="text-[10px] opacity-70">{opt.sub}</p>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Flying from */}
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
+                Flying from
+              </p>
+              <div className="relative flex items-center">
+                <span className="absolute left-3 text-sm">✈️</span>
+                <input
+                  type="text"
+                  value={originCity}
+                  onChange={(e) => setOriginCity(e.target.value)}
+                  placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                />
+                {locationPermission !== "denied" && !originCity && (
+                  <button
+                    type="button"
+                    onClick={() => requestLocation().then(() => {
+                      const name = useLocationStore.getState().locationName;
+                      if (name) setOriginCity(name);
+                    })}
+                    className="absolute right-2 text-[10px] text-primary font-medium"
+                  >
+                    Use GPS
+                  </button>
+                )}
               </div>
             </div>
 

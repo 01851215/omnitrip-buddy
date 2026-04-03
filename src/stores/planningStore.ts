@@ -16,6 +16,7 @@ interface PlanningState {
   endDate: string;
   intensity: "relaxed" | "balanced" | "packed" | null;
   showConstraints: boolean;
+  originCity: string;
 }
 
 interface PlanningActions {
@@ -32,6 +33,7 @@ interface PlanningActions {
   setEndDate: (val: string) => void;
   setIntensity: (val: "relaxed" | "balanced" | "packed" | null) => void;
   setShowConstraints: (val: boolean) => void;
+  setOriginCity: (val: string) => void;
   resetPlanning: () => void;
 }
 
@@ -49,6 +51,7 @@ const initialState: PlanningState = {
   endDate: "",
   intensity: null,
   showConstraints: true,
+  originCity: "",
 };
 
 export const usePlanningStore = create<PlanningState & PlanningActions>((set) => ({
@@ -67,5 +70,6 @@ export const usePlanningStore = create<PlanningState & PlanningActions>((set) =>
   setEndDate: (val) => set({ endDate: val }),
   setIntensity: (val) => set({ intensity: val }),
   setShowConstraints: (val) => set({ showConstraints: val }),
+  setOriginCity: (val) => set({ originCity: val }),
   resetPlanning: () => set(initialState),
 }));
