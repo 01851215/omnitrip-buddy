@@ -85,6 +85,18 @@ interface Deal {
   bookable: boolean;
   affiliateUrl?: string;
   amadeusOfferId?: string;
+  // Flight-specific
+  flightNumber?: string;
+  airline?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  durationMins?: number;
+  stops?: number;
+  // Hotel-specific
+  hotelName?: string;
+  starRating?: number;
+  roomType?: string;
+  amenities?: string[];
 }
 
 // Resolve city to IATA code via Amadeus Location API
@@ -126,28 +138,50 @@ async function searchFlights(
     max: "5",
     currencyCode: "USD",
     ...(maxFlightPrice ? { maxPrice: String(maxFlightPrice) } : {}),
-  }) as { data?: Array<{ id: string; price: { total: string; currency: string }; itineraries: Array<{ segments: Array<{ departure: { iataCode: string }; arrival: { iataCode: string }; carrierCode: string }> }> }> } | null;
+  }) as { data?: Array<{ id: string; price: { total: string; currency: string }; itineraries: Array<{ duration?: string; segments: Array<{ number?: string; departure: { iataCode: string; at: string }; arrival: { iataCode: string; at: string }; carrierCode: string; operating?: { carrierCode: string } }> }> }> } | null;
 
   if (!data?.data) return [];
 
   return data.data.map((offer, i) => {
-    const seg = offer.itineraries[0]?.segments;
-    const carrier = seg?.[0]?.carrierCode ?? "Unknown";
-    const stops = (seg?.length ?? 1) - 1;
+    const itin = offer.itineraries[0];
+    const seg = itin?.segments ?? [];
+    const firstSeg = seg[0];
+    const lastSeg = seg[seg.length - 1];
+    const carrier = firstSeg?.carrierCode ?? "Unknown";
+    const stops = seg.length - 1;
+    const flightNum = firstSeg ? `${carrier}${firstSeg.number ?? ""}` : undefined;
+    const depTime = firstSeg?.departure.at ? firstSeg.departure.at.slice(11, 16) : undefined;
+    const arrTime = lastSeg?.arrival.at ? lastSeg.arrival.at.slice(11, 16) : undefined;
+    // Parse ISO duration PT11H30M
+    const durMins = (() => {
+      const d = itin?.duration ?? "";
+      const h = parseInt(d.match(/(\d+)H/)?.[1] ?? "0", 10);
+      const m = parseInt(d.match(/(\d+)M/)?.[1] ?? "0", 10);
+      return h * 60 + m || undefined;
+    })();
+    const stopLabel = stops === 0 ? "Direct" : `${stops} stop${stops > 1 ? "s" : ""}`;
+    const durLabel = durMins ? `${Math.floor(durMins / 60)}h ${durMins % 60}m` : "";
 
     return {
       id: `fl-amadeus-${offer.id}`,
       category: "flights",
       title: `${origin} → ${first.name}`,
-      subtitle: `${carrier} · ${stops === 0 ? "Direct" : `${stops} stop${stops > 1 ? "s" : ""}`}`,
+      subtitle: `${carrier} · ${stopLabel}${durLabel ? ` · ${durLabel}` : ""}`,
       priceFrom: parseFloat(offer.price.total),
       currency: offer.price.currency,
       rating: 4.2 + (i % 3) * 0.2,
       image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=400&q=80",
       badge: i === 0 ? "Best price" : undefined,
-      provider: "Amadeus",
+      provider: "Skyscanner",
       bookable: false,
       amadeusOfferId: offer.id,
+      affiliateUrl: `https://www.skyscanner.net/transport/flights/${originCode.toLowerCase()}/${destCode.toLowerCase()}/${first.arrivalDate.replace(/-/g, "")}/`,
+      flightNumber: flightNum,
+      airline: carrier,
+      departureTime: depTime,
+      arrivalTime: arrTime,
+      durationMins: durMins,
+      stops,
     };
   });
 }
@@ -187,18 +221,32 @@ async function searchHotels(destinations: DestinationInput[]): Promise<Deal[]> {
       const offer = hotel.offers?.[0];
       if (!offer) continue;
 
+      const hotelName = hotel.hotel.name || `Hotel in ${dest.name}`;
+      const stars = hotel.hotel.rating ? parseInt(hotel.hotel.rating, 10) : 4;
+      const roomCat = (offer as any).room?.typeEstimated?.category ?? "STANDARD_ROOM";
+      const roomType = roomCat.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+      const amenitiesRaw: string[] = (hotel.hotel as any).amenities ?? [];
+      const amenities = amenitiesRaw
+        .slice(0, 4)
+        .map((a) => a.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()));
+
       deals.push({
         id: `ht-amadeus-${hotel.hotel.hotelId}`,
         category: "hotels",
-        title: hotel.hotel.name || `Hotel in ${dest.name}`,
-        subtitle: `${dest.country} · ${dest.arrivalDate} – ${dest.departureDate}`,
+        title: hotelName,
+        subtitle: `${roomType} · ${dest.country}`,
         priceFrom: parseFloat(offer.price.total),
         currency: offer.price.currency,
-        rating: hotel.hotel.rating ? parseFloat(hotel.hotel.rating) : 4.0,
+        rating: stars,
         image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
-        provider: "Amadeus",
+        provider: "Booking.com",
         bookable: false,
         amadeusOfferId: offer.id,
+        affiliateUrl: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(dest.name)}&checkin=${dest.arrivalDate}&checkout=${dest.departureDate}&group_adults=1`,
+        hotelName,
+        starRating: stars,
+        roomType,
+        amenities: amenities.length > 0 ? amenities : ["Free WiFi", "24hr Reception"],
       });
     }
   }

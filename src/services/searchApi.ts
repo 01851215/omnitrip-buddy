@@ -28,6 +28,18 @@ export interface LiveDeal {
   dayDate?: string;
   timeSlot?: "morning" | "afternoon" | "evening";
   timeExact?: string;
+  // Flight-specific
+  flightNumber?: string;
+  airline?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  durationMins?: number;
+  stops?: number;
+  // Hotel-specific
+  hotelName?: string;
+  starRating?: number;
+  roomType?: string;
+  amenities?: string[];
 }
 
 export type LiveDealResult = Record<DealCategory, LiveDeal[]>;
@@ -93,6 +105,16 @@ export async function searchDeals(
         dayDate: d.dayDate,
         timeSlot: d.timeSlot,
         timeExact: d.timeExact,
+        flightNumber: d.flightNumber,
+        airline: d.airline,
+        departureTime: d.departureTime,
+        arrivalTime: d.arrivalTime,
+        durationMins: d.durationMins,
+        stops: d.stops,
+        hotelName: d.hotelName,
+        starRating: d.starRating,
+        roomType: d.roomType,
+        amenities: d.amenities,
       })),
     ]),
   ) as LiveDealResult;

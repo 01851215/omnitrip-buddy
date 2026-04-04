@@ -40,8 +40,17 @@ function dealToCalendarTimes(deal: Deal | LiveDeal): { startTime: string; endTim
       endTime: `${d.checkOut}T11:00:00`,
     };
   }
-  // Flights/trains: use checkIn date (arrival date of first dest) as rough time
-  if ((deal.category === "flights" || deal.category === "trains") && d.checkIn) {
+  // Flights: use actual departure/arrival times if available
+  if (deal.category === "flights" && d.checkIn) {
+    const dep = d.departureTime ?? "08:00";
+    const arr = d.arrivalTime ?? "12:00";
+    return {
+      startTime: `${d.checkIn}T${dep}:00`,
+      endTime: `${d.checkIn}T${arr}:00`,
+    };
+  }
+  // Trains
+  if (deal.category === "trains" && d.checkIn) {
     return {
       startTime: `${d.checkIn}T09:00:00`,
       endTime: `${d.checkIn}T12:00:00`,
@@ -130,7 +139,52 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
       {/* Content */}
       <div className="p-3">
         <p className="text-xs font-semibold text-text line-clamp-1">{deal.title}</p>
+
+        {/* Flight number + times row */}
+        {deal.category === "flights" && (deal as any).flightNumber && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="text-[10px] font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded font-mono">
+              {(deal as any).flightNumber}
+            </span>
+            {(deal as any).departureTime && (deal as any).arrivalTime && (
+              <span className="text-[10px] font-medium text-text">
+                {(deal as any).departureTime} → {(deal as any).arrivalTime}
+              </span>
+            )}
+            {(deal as any).durationMins && (
+              <span className="text-[9px] text-text-muted">
+                · {Math.floor((deal as any).durationMins / 60)}h {(deal as any).durationMins % 60}m
+              </span>
+            )}
+          </div>
+        )}
+
         <p className="text-[10px] text-text-muted mt-0.5 line-clamp-1">{deal.subtitle}</p>
+
+        {/* Hotel star rating + room type */}
+        {deal.category === "hotels" && (
+          <div className="mt-1 space-y-0.5">
+            {(deal as any).starRating && (
+              <div className="flex items-center gap-0.5">
+                {Array.from({ length: (deal as any).starRating as number }).map((_, i) => (
+                  <span key={i} className="text-[9px] text-amber-400">★</span>
+                ))}
+              </div>
+            )}
+            {(deal as any).roomType && (
+              <p className="text-[10px] text-text-muted">{(deal as any).roomType}</p>
+            )}
+            {(deal as any).amenities?.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-0.5">
+                {((deal as any).amenities as string[]).map((a) => (
+                  <span key={a} className="text-[8px] bg-cream text-text-muted px-1 py-0.5 rounded border border-cream-dark">
+                    {a}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Time pill for activities / dining */}
         {(deal.category === "activities" || deal.category === "dining") && (deal as any).timeExact && (
@@ -155,7 +209,7 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
         )}
 
         {/* Rating */}
-        {deal.rating && (
+        {deal.rating && deal.category !== "hotels" && (
           <div className="flex items-center gap-1 mt-1.5">
             <span className="text-[10px] text-amber-500">★</span>
             <span className="text-[10px] font-medium text-text">{deal.rating.toFixed(1)}</span>
@@ -214,10 +268,19 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
           </button>
         )}
 
-        {/* Provider pills (legacy affiliate links) */}
-        {!live && affiliateLinks.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {affiliateLinks.map((link) => (
+        {/* Booking platform links */}
+        <div className="flex flex-wrap gap-1 mt-2">
+          {live ? (
+            <a
+              href={(deal as LiveDeal).affiliateUrl ?? "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[9px] font-semibold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20"
+            >
+              🔗 via {(deal as LiveDeal).provider}
+            </a>
+          ) : (
+            affiliateLinks.map((link) => (
               <a
                 key={link.provider}
                 href={link.url}
@@ -227,18 +290,9 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
               >
                 {link.logo} {link.provider}
               </a>
-            ))}
-          </div>
-        )}
-
-        {/* Live provider label */}
-        {live && (
-          <div className="mt-2">
-            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-md bg-cream text-text-secondary border border-cream-dark">
-              via {deal.provider}
-            </span>
-          </div>
-        )}
+            ))
+          )}
+        </div>
 
         {/* Add to Calendar */}
         {userId && !calAdded && (

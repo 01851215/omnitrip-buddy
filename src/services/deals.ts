@@ -45,6 +45,18 @@ export interface Deal {
   dayDate?: string;
   timeSlot?: "morning" | "afternoon" | "evening";
   timeExact?: string;
+  // Flight-specific
+  flightNumber?: string;
+  airline?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  durationMins?: number;
+  stops?: number;
+  // Hotel-specific
+  hotelName?: string;
+  starRating?: number;
+  roomType?: string;
+  amenities?: string[];
 }
 
 // Destination-specific image pool
@@ -99,6 +111,50 @@ function priceVariant(base: number, seed: string, spread: number): number {
   return Math.round(base + (hash % spread) - spread / 2);
 }
 
+function hashInt(seed: string): number {
+  return seed.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+}
+function pickPool<T>(pool: T[], seed: string): T {
+  return pool[hashInt(seed) % pool.length];
+}
+
+const AIRLINE_POOL = [
+  { code: "BA", name: "British Airways" },
+  { code: "LH", name: "Lufthansa" },
+  { code: "AF", name: "Air France" },
+  { code: "EK", name: "Emirates" },
+  { code: "QR", name: "Qatar Airways" },
+  { code: "JL", name: "Japan Airlines" },
+  { code: "NH", name: "ANA" },
+  { code: "SQ", name: "Singapore Airlines" },
+  { code: "TK", name: "Turkish Airlines" },
+  { code: "KL", name: "KLM" },
+  { code: "CX", name: "Cathay Pacific" },
+  { code: "VS", name: "Virgin Atlantic" },
+];
+
+const HOTEL_BRANDS = {
+  budget:   ["Ibis", "Premier Inn", "Travelodge", "ibis budget", "Pod Hotel", "Motel One"],
+  moderate: ["Marriott", "Hilton", "Novotel", "Radisson Blu", "Crowne Plaza", "Sheraton", "Hyatt Regency"],
+  luxury:   ["Four Seasons", "Ritz-Carlton", "Park Hyatt", "Mandarin Oriental", "St. Regis", "Bulgari Hotel"],
+};
+const ROOM_TYPES = {
+  budget:   ["Standard Room", "Economy Twin", "Budget Double"],
+  moderate: ["Deluxe Double", "Superior King", "Comfort Twin", "Classic Room"],
+  luxury:   ["Junior Suite", "Deluxe Ocean View", "Premier Suite", "Club Room"],
+};
+const AMENITIES_POOL = {
+  budget:   [["Free WiFi", "24hr Reception"], ["Free WiFi", "Luggage Storage"], ["Free WiFi", "Self-catering"]],
+  moderate: [["Free WiFi", "Pool", "Gym"], ["Free WiFi", "Breakfast", "Pool"], ["Free WiFi", "Gym", "Restaurant"]],
+  luxury:   [["Free WiFi", "Spa", "Pool", "Concierge"], ["Free WiFi", "Rooftop Pool", "Fine Dining"], ["Free WiFi", "Infinity Pool", "Spa", "Room Service"]],
+};
+
+function budgetTier(dailyBudget?: number): "budget" | "moderate" | "luxury" {
+  if (!dailyBudget || dailyBudget <= 80) return "budget";
+  if (dailyBudget <= 200) return "moderate";
+  return "luxury";
+}
+
 // Scale base prices to match the user's daily budget tier
 function getPriceMultiplier(dailyBudget: number): number {
   if (dailyBudget <= 50)  return 0.45; // ~$144 flights, ~$38/night hotels
@@ -132,6 +188,28 @@ export function generateDeals(
   const lastDest = destinations[destinations.length - 1];
   const checkin = firstDest.arrivalDate;
   const checkout = lastDest.departureDate;
+  const tier = budgetTier(dailyBudget);
+
+  // ── Flight helpers ────────────────────────────────────────────────────────
+  function makeFlightTimes(seed: string, durationHrBase: number) {
+    const h = hashInt(seed);
+    const depHour = 6 + (h % 7);               // 06:00 – 12:00
+    const depMin  = (h % 4) * 15;              // :00 :15 :30 :45
+    const durMins = (durationHrBase + (h % 4)) * 60 + (h % 60);
+    const arrTotalMin = depHour * 60 + depMin + durMins;
+    const arrHour = Math.floor(arrTotalMin / 60) % 24;
+    const arrMin  = arrTotalMin % 60;
+    const fmt = (hh: number, mm: number) =>
+      `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    return { depTime: fmt(depHour, depMin), arrTime: fmt(arrHour, arrMin), durMins };
+  }
+
+  const al1 = pickPool(AIRLINE_POOL, firstDest.name);
+  const al2 = pickPool(AIRLINE_POOL, firstDest.name + "2");
+  const fl1Times = makeFlightTimes(firstDest.name, 5);
+  const fl2Times = makeFlightTimes(firstDest.name + "2", 4);
+  const fn1 = `${al1.code}${100 + (hashInt(firstDest.name) % 800)}`;
+  const fn2 = `${al2.code}${100 + (hashInt(firstDest.name + "2") % 800)}`;
 
   // ── Flights ──────────────────────────────────────────────────────────────
   const flights: Deal[] = [
@@ -139,13 +217,19 @@ export function generateDeals(
       id: "fl-1",
       category: "flights",
       title: `${originCity} → ${firstDest.name}`,
-      subtitle: `Direct & connecting flights · ${firstDest.country}`,
+      subtitle: `${al1.name} · Direct · ${Math.floor(fl1Times.durMins / 60)}h ${fl1Times.durMins % 60}m`,
       priceFrom: p(320, firstDest.name, 200),
       currency: "USD",
       rating: 4.3,
       reviewCount: 2840,
       image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=400&q=80",
       badge: "Best price",
+      flightNumber: fn1,
+      airline: al1.name,
+      departureTime: fl1Times.depTime,
+      arrivalTime: fl1Times.arrTime,
+      durationMins: fl1Times.durMins,
+      stops: 0,
       affiliateLinks: [
         skyscannerFlight(originCity, firstDest.name, checkin, checkout),
         googleFlights(originCity, firstDest.name, checkin, checkout),
@@ -155,13 +239,19 @@ export function generateDeals(
     {
       id: "fl-2",
       category: "flights",
-      title: `Budget flights to ${firstDest.name}`,
-      subtitle: `Low-cost carriers · Flexible dates`,
+      title: `${originCity} → ${firstDest.name}`,
+      subtitle: `${al2.name} · 1 stop · ${Math.floor(fl2Times.durMins / 60)}h ${fl2Times.durMins % 60}m`,
       priceFrom: p(210, firstDest.name + "2", 150),
       currency: "USD",
       rating: 4.0,
       reviewCount: 1520,
       image: "https://images.unsplash.com/photo-1464037866556-6812c9d1c72e?w=400&q=80",
+      flightNumber: fn2,
+      airline: al2.name,
+      departureTime: fl2Times.depTime,
+      arrivalTime: fl2Times.arrTime,
+      durationMins: fl2Times.durMins,
+      stops: 1,
       affiliateLinks: [
         opodoFlight(originCity, firstDest.name, checkin),
         budgetAirFlight(originCity, firstDest.name, checkin),
@@ -171,25 +261,36 @@ export function generateDeals(
 
   // ── Hotels ────────────────────────────────────────────────────────────────
   const hotels: Deal[] = destinations.flatMap((dest, di) => [
-    {
-      id: `ht-${di}-1`,
-      category: "hotels" as DealCategory,
-      title: `Hotels in ${dest.name}`,
-      subtitle: `${dest.country} · ${dest.arrivalDate} – ${dest.departureDate}`,
-      priceFrom: p(85, dest.name + "hotel", 60),
-      currency: "USD",
-      rating: 4.5,
-      reviewCount: priceVariant(3200, dest.name, 1500),
-      image: pickImage(getImages(dest.name), di * 2),
-      badge: di === 0 ? "Top rated" : undefined,
-      destination: dest.name,
-      checkIn: dest.arrivalDate,
-      checkOut: dest.departureDate,
-      affiliateLinks: [
-        bookingComHotel(dest.name, dest.arrivalDate, dest.departureDate),
-        hotelsComHotel(dest.name, dest.arrivalDate, dest.departureDate),
-      ],
-    },
+    (() => {
+      const brand = pickPool(HOTEL_BRANDS[tier], dest.name + "hotel");
+      const hotelName = `${brand} ${dest.name}`;
+      const roomType = pickPool(ROOM_TYPES[tier], dest.name + "room");
+      const amenities = pickPool(AMENITIES_POOL[tier], dest.name + "amenities");
+      const stars = tier === "budget" ? 3 : tier === "moderate" ? 4 : 5;
+      return {
+        id: `ht-${di}-1`,
+        category: "hotels" as DealCategory,
+        title: hotelName,
+        subtitle: `${roomType} · ${dest.country}`,
+        priceFrom: p(85, dest.name + "hotel", 60),
+        currency: "USD",
+        rating: 4.5,
+        reviewCount: priceVariant(3200, dest.name, 1500),
+        image: pickImage(getImages(dest.name), di * 2),
+        badge: di === 0 ? "Top rated" : undefined,
+        destination: dest.name,
+        checkIn: dest.arrivalDate,
+        checkOut: dest.departureDate,
+        hotelName,
+        starRating: stars,
+        roomType,
+        amenities,
+        affiliateLinks: [
+          bookingComHotel(dest.name, dest.arrivalDate, dest.departureDate),
+          hotelsComHotel(dest.name, dest.arrivalDate, dest.departureDate),
+        ],
+      };
+    })(),
     {
       id: `ht-${di}-2`,
       category: "hotels" as DealCategory,
@@ -203,6 +304,8 @@ export function generateDeals(
       destination: dest.name,
       checkIn: dest.arrivalDate,
       checkOut: dest.departureDate,
+      roomType: "Private Room",
+      amenities: ["Free WiFi", "Self-catering", "Washer"],
       affiliateLinks: [
         airbnbHotel(dest.name, dest.arrivalDate, dest.departureDate),
         hostelworldHotel(dest.name, dest.arrivalDate, dest.departureDate),
