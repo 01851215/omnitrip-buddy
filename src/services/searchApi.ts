@@ -35,6 +35,7 @@ export interface LiveDeal {
   arrivalTime?: string;
   durationMins?: number;
   stops?: number;
+  amadeusOffer?: unknown;
   // Hotel-specific
   hotelName?: string;
   starRating?: number;
@@ -111,6 +112,7 @@ export async function searchDeals(
         arrivalTime: d.arrivalTime,
         durationMins: d.durationMins,
         stops: d.stops,
+        amadeusOffer: undefined,
         hotelName: d.hotelName,
         starRating: d.starRating,
         roomType: d.roomType,

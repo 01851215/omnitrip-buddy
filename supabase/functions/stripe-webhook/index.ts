@@ -56,51 +56,107 @@ serve(async (req) => {
 
   const event = JSON.parse(body);
 
-  if (event.type !== "checkout.session.completed") {
-    return new Response(JSON.stringify({ received: true }), {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+  // ── Handle wallet top-up sessions ───────────────────────────────────────────
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const meta    = session.metadata ?? {};
+
+    if (meta.type === "wallet_topup" && meta.user_id) {
+      const amount   = parseFloat(meta.amount ?? "0");
+      const currency = meta.currency ?? "USD";
+
+      // Credit wallet
+      const { data: wallet } = await supabase
+        .from("user_wallets")
+        .select("id, balance")
+        .eq("user_id", meta.user_id)
+        .single();
+
+      if (wallet) {
+        await supabase
+          .from("user_wallets")
+          .update({ balance: wallet.balance + amount })
+          .eq("id", wallet.id);
+      } else {
+        await supabase.from("user_wallets").insert({
+          user_id:  meta.user_id,
+          balance:  amount,
+          currency,
+        });
+      }
+
+      // Record transaction
+      await supabase.from("wallet_transactions").insert({
+        user_id:           meta.user_id,
+        type:              "topup",
+        amount,
+        currency,
+        description:       "Wallet top-up via Stripe",
+        stripe_session_id: session.id,
+      });
+
+      return new Response(JSON.stringify({ received: true, type: "wallet_topup" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Handle regular booking checkout sessions ─────────────────────────────
+    const sessionId       = session.id;
+    const paymentIntentId = session.payment_intent;
+
+    const { data: bookings } = await supabase
+      .from("bookings")
+      .update({
+        status: "confirmed",
+        stripe_payment_intent_id: paymentIntentId,
+        booking_url: session.url ?? null,
+      })
+      .eq("stripe_session_id", sessionId)
+      .select("*");
+
+    const booking = bookings?.[0];
+
+    if (booking && meta.user_id) {
+      await supabase.from("calendar_events").insert({
+        user_id:     meta.user_id,
+        trip_id:     meta.trip_id || null,
+        source:      "omnitrip",
+        title:       `✅ ${booking.title}`,
+        description: `Booked via OmniTrip · ${booking.provider} · $${booking.price_amount} ${booking.currency}`,
+        start_time:  booking.start_time || new Date().toISOString(),
+        end_time:    booking.end_time   || new Date(Date.now() + 3600000).toISOString(),
+        type:        booking.deal_category === "hotels" ? "travel" : "personal",
+        conflicts_with: [],
+        booking_id:  booking.id,
+      });
+    }
+
+    return new Response(JSON.stringify({ received: true, bookingId: booking?.id }), {
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  const session = event.data.object;
-  const sessionId = session.id;
-  const paymentIntentId = session.payment_intent;
-  const meta = session.metadata ?? {};
+  // ── Handle PaymentIntent succeeded (in-app payment) ─────────────────────────
+  if (event.type === "payment_intent.succeeded") {
+    const pi   = event.data.object;
+    const meta = pi.metadata ?? {};
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    if (meta.user_id) {
+      // Update any pending booking matching this payment_intent id
+      await supabase
+        .from("bookings")
+        .update({ status: "confirmed", stripe_payment_intent_id: pi.id })
+        .eq("stripe_session_id", pi.id);
+    }
 
-  // Update booking status to confirmed
-  const { data: bookings } = await supabase
-    .from("bookings")
-    .update({
-      status: "confirmed",
-      stripe_payment_intent_id: paymentIntentId,
-      booking_url: session.url ?? null,
-    })
-    .eq("stripe_session_id", sessionId)
-    .select("*");
-
-  const booking = bookings?.[0];
-
-  // Insert a calendar event for the confirmed booking
-  if (booking && meta.user_id) {
-    const calendarEvent: Record<string, unknown> = {
-      user_id: meta.user_id,
-      trip_id: meta.trip_id || null,
-      source: "omnitrip",
-      title: `✅ ${booking.title}`,
-      description: `Booked via OmniTrip · ${booking.provider} · $${booking.price_amount} ${booking.currency}`,
-      start_time: booking.start_time || new Date().toISOString(),
-      end_time: booking.end_time || new Date(Date.now() + 3600000).toISOString(),
-      type: booking.deal_category === "hotels" ? "travel" : "personal",
-      conflicts_with: [],
-      booking_id: booking.id,
-    };
-
-    await supabase.from("calendar_events").insert(calendarEvent);
+    return new Response(JSON.stringify({ received: true, type: "payment_intent.succeeded" }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  return new Response(JSON.stringify({ received: true, bookingId: booking?.id }), {
+  return new Response(JSON.stringify({ received: true }), {
     headers: { "Content-Type": "application/json" },
   });
 });

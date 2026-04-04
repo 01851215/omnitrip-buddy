@@ -4,14 +4,19 @@ import type { LiveDeal } from "../../services/searchApi";
 import { recordExternalBooking } from "../../services/searchApi";
 import { CheckoutButton } from "./CheckoutButton";
 import { BookingBadge } from "./BookingBadge";
+import { FlightBookingModal } from "./FlightBookingModal";
+import { PaymentSheet } from "./PaymentSheet";
 import type { Booking } from "../../types";
 import { supabase } from "../../services/supabase";
+import type { Wallet } from "../../hooks/useWallet";
 
 interface DealCardProps {
   deal: Deal | LiveDeal;
   tripId?: string;
   userId?: string;
   booking?: Booking;
+  wallet?: Wallet | null;
+  onBookingConfirmed?: () => void;
 }
 
 function isLiveDeal(d: Deal | LiveDeal): d is LiveDeal {
@@ -59,12 +64,13 @@ function dealToCalendarTimes(deal: Deal | LiveDeal): { startTime: string; endTim
   return null;
 }
 
-export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
+export function DealCard({ deal, tripId, userId, booking, wallet, onBookingConfirmed }: DealCardProps) {
   const [markedBooked, setMarkedBooked] = useState(false);
   const [calAdded, setCalAdded] = useState(false);
   const [calAdding, setCalAdding] = useState(false);
-  // For flights/hotels: show confirm/reject UI before adding
   const [showCalConfirm, setShowCalConfirm] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showPaymentSheet, setShowPaymentSheet] = useState(false);
 
   const live = isLiveDeal(deal);
   const affiliateLinks = live ? [] : (deal as Deal).affiliateLinks;
@@ -235,7 +241,16 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
               status={booking?.status ?? "external"}
               provider={live ? deal.provider : undefined}
             />
-          ) : live && deal.bookable && userId ? (
+          ) : live && deal.category === "flights" && (deal as LiveDeal).amadeusOffer ? (
+            /* In-app Amadeus booking */
+            <button
+              type="button"
+              onClick={() => setShowBookingModal(true)}
+              className="text-[10px] font-semibold bg-primary text-white px-3 py-1.5 rounded-lg"
+            >
+              Book Now
+            </button>
+          ) : live && deal.bookable && userId && deal.category !== "flights" ? (
             <CheckoutButton
               title={deal.title}
               priceAmount={deal.priceFrom}
@@ -257,8 +272,19 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
           ) : null}
         </div>
 
-        {/* "Mark as Booked" for non-bookable deals */}
-        {!isBooked && !(live && (deal as LiveDeal).bookable) && userId && (
+        {/* "Pay with OmniTrip" in-app checkout — for any bookable deal with a price */}
+        {!isBooked && userId && deal.priceFrom > 0 && deal.category !== "flights" && (
+          <button
+            type="button"
+            onClick={() => setShowPaymentSheet(true)}
+            className="w-full mt-2 text-[10px] font-semibold text-white bg-gradient-to-r from-primary to-primary/85 px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity"
+          >
+            🛒 Pay with OmniTrip
+          </button>
+        )}
+
+        {/* "Mark as Booked" for non-bookable deals (only when not showing Pay button) */}
+        {!isBooked && !(live && (deal as LiveDeal).bookable) && userId && deal.category === "flights" && (
           <button
             type="button"
             onClick={handleMarkBooked}
@@ -332,6 +358,36 @@ export function DealCard({ deal, tripId, userId, booking }: DealCardProps) {
           <p className="mt-2 text-[10px] text-center text-primary font-medium">✓ Added to calendar</p>
         )}
       </div>
+
+      {/* In-app flight booking modal */}
+      {showBookingModal && live && (
+        <FlightBookingModal
+          deal={deal as LiveDeal}
+          userId={userId}
+          tripId={tripId}
+          onClose={() => setShowBookingModal(false)}
+        />
+      )}
+
+      {/* In-app OmniTrip payment sheet */}
+      {showPaymentSheet && userId && (
+        <PaymentSheet
+          userId={userId}
+          tripId={tripId}
+          title={deal.title}
+          priceAmount={deal.priceFrom}
+          currency={deal.currency}
+          dealCategory={deal.category}
+          provider={live ? (deal as LiveDeal).provider : (deal as Deal).affiliateLinks?.[0]?.provider ?? "OmniTrip"}
+          wallet={wallet}
+          onClose={() => setShowPaymentSheet(false)}
+          onSuccess={(bId) => {
+            setShowPaymentSheet(false);
+            setMarkedBooked(true);
+            onBookingConfirmed?.();
+          }}
+        />
+      )}
     </div>
   );
 }

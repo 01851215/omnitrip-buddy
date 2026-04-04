@@ -19,6 +19,9 @@ import { useUserHistory, historyToPromptContext } from "../hooks/useUserHistory"
 import { searchDeals } from "../services/searchApi";
 import { DealsPanel } from "../components/booking/DealsPanel";
 import { useBookings } from "../hooks/useBookings";
+import { useWallet } from "../hooks/useWallet";
+import { WalletCard } from "../components/booking/WalletCard";
+import { TripBudgetTracker } from "../components/booking/TripBudgetTracker";
 import { useT } from "../i18n/useT";
 import { useLocationStore } from "../stores/locationStore";
 import { requestLocation } from "../services/location";
@@ -108,7 +111,8 @@ export function PlanningScreen() {
 
   const constraintsRef = useRef<PlanningConstraints>({});
   const activeTripId = Object.values(createdTrips)[0];
-  const { bookings } = useBookings(activeTripId);
+  const { bookings, refresh: refreshBookings } = useBookings(activeTripId);
+  const { wallet } = useWallet(user?.id);
   const t = useT();
 
   const buildConstraints = (): PlanningConstraints => {
@@ -894,6 +898,23 @@ export function PlanningScreen() {
                                 : null
                           }
                           intensity={intensity}
+                          wallet={wallet}
+                          onBookingConfirmed={refreshBookings}
+                        />
+                      )}
+
+                      {/* Budget tracker — shows confirmed bookings vs budget */}
+                      {createdTrips[route.id] && (
+                        <TripBudgetTracker
+                          tripId={createdTrips[route.id]}
+                          dailyBudget={
+                            customBudget && !isNaN(parseFloat(customBudget))
+                              ? parseFloat(customBudget)
+                              : budgetStyle
+                                ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount ?? null
+                                : undefined
+                          }
+                          tripDays={undefined}
                         />
                       )}
                     </div>
@@ -902,6 +923,11 @@ export function PlanningScreen() {
               })}
             </div>
           </div>
+
+          {/* OmniTrip Wallet */}
+          {user && (
+            <WalletCard userId={user.id} />
+          )}
 
           {/* Destination Map */}
           {mapCenter && mapMarkers.length > 0 && (

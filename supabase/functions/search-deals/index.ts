@@ -92,6 +92,7 @@ interface Deal {
   arrivalTime?: string;
   durationMins?: number;
   stops?: number;
+  amadeusOffer?: unknown;
   // Hotel-specific
   hotelName?: string;
   starRating?: number;
@@ -172,10 +173,11 @@ async function searchFlights(
       rating: 4.2 + (i % 3) * 0.2,
       image: "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=400&q=80",
       badge: i === 0 ? "Best price" : undefined,
-      provider: "Skyscanner",
-      bookable: false,
+      provider: "Google Flights",
+      bookable: true,
       amadeusOfferId: offer.id,
-      affiliateUrl: `https://www.skyscanner.net/transport/flights/${originCode.toLowerCase()}/${destCode.toLowerCase()}/${first.arrivalDate.replace(/-/g, "")}/`,
+      amadeusOffer: offer,
+      affiliateUrl: `https://www.google.com/travel/flights?q=${encodeURIComponent(`${origin} to ${first.name} ${first.arrivalDate}`)}`,
       flightNumber: flightNum,
       airline: carrier,
       departureTime: depTime,

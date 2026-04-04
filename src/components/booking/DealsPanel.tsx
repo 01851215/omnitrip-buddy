@@ -3,6 +3,7 @@ import type { Deal, DealCategory } from "../../services/deals";
 import type { LiveDeal, LiveDealResult } from "../../services/searchApi";
 import { DealCard } from "./DealCard";
 import type { Booking } from "../../types";
+import type { Wallet } from "../../hooks/useWallet";
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en", { month: "short", day: "numeric" });
@@ -22,6 +23,8 @@ interface DealsPanelProps {
   bookings?: Booking[];
   dailyBudget?: number | null;
   intensity?: "relaxed" | "balanced" | "packed" | null;
+  wallet?: Wallet | null;
+  onBookingConfirmed?: () => void;
 }
 
 const TABS: { key: DealCategory; label: string; emoji: string }[] = [
@@ -43,7 +46,7 @@ const PROVIDER_LOGOS: Record<DealCategory, string> = {
 const INTENSITY_PER_DAY: Record<string, number> = { relaxed: 2, balanced: 4, packed: 6 };
 const TIME_SLOT_LABEL: Record<string, string> = { morning: "🌅 Morning", afternoon: "☀️ Afternoon", evening: "🌙 Evening" };
 
-export function DealsPanel({ deals, destinationNames, isLive, loading, tripId, userId, bookings, dailyBudget, intensity }: DealsPanelProps) {
+export function DealsPanel({ deals, destinationNames, isLive, loading, tripId, userId, bookings, dailyBudget, intensity, wallet, onBookingConfirmed }: DealsPanelProps) {
   const [activeTab, setActiveTab] = useState<DealCategory>("flights");
   const activeDeal = deals[activeTab] ?? [];
 
@@ -164,6 +167,8 @@ export function DealsPanel({ deals, destinationNames, isLive, loading, tripId, u
                           tripId={tripId}
                           userId={userId}
                           booking={findBookingForDeal(deal)}
+                          wallet={wallet}
+                          onBookingConfirmed={onBookingConfirmed}
                         />
                       ))}
                     </div>
@@ -285,6 +290,8 @@ export function DealsPanel({ deals, destinationNames, isLive, loading, tripId, u
                 tripId={tripId}
                 userId={userId}
                 booking={findBookingForDeal(deal)}
+                wallet={wallet}
+                onBookingConfirmed={onBookingConfirmed}
               />
             ))}
           </div>

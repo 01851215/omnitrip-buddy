@@ -231,8 +231,8 @@ export function generateDeals(
       durationMins: fl1Times.durMins,
       stops: 0,
       affiliateLinks: [
-        skyscannerFlight(originCity, firstDest.name, checkin, checkout),
         googleFlights(originCity, firstDest.name, checkin, checkout),
+        skyscannerFlight(originCity, firstDest.name, checkin, checkout),
         budgetAirFlight(originCity, firstDest.name, checkin),
       ],
     },
@@ -253,6 +253,7 @@ export function generateDeals(
       durationMins: fl2Times.durMins,
       stops: 1,
       affiliateLinks: [
+        googleFlights(originCity, firstDest.name, checkin),
         opodoFlight(originCity, firstDest.name, checkin),
         budgetAirFlight(originCity, firstDest.name, checkin),
       ],
