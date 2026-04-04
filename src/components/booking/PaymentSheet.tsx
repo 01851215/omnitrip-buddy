@@ -233,7 +233,7 @@ export function PaymentSheet({
             <div className="flex bg-cream rounded-xl p-1 gap-1">
               <button
                 type="button"
-                onClick={() => setTab("card")}
+                onClick={() => { setTab("card"); setErrorMsg(""); }}
                 className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${
                   tab === "card"
                     ? "bg-surface shadow-sm text-text font-semibold"
@@ -244,7 +244,7 @@ export function PaymentSheet({
               </button>
               <button
                 type="button"
-                onClick={() => setTab("wallet")}
+                onClick={() => { setTab("wallet"); setErrorMsg(""); }}
                 className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${
                   tab === "wallet"
                     ? "bg-surface shadow-sm text-text font-semibold"
@@ -351,16 +351,25 @@ export function PaymentSheet({
 // ── Quick top-up button ───────────────────────────────────────────────────────
 function TopUpButton({ userId, amount }: { userId: string; amount: number }) {
   const [loading, setLoading] = useState(false);
+  const [topUpError, setTopUpError] = useState("");
 
   const QUICK_AMOUNTS = [20, 50, 100, 200];
 
   const handleTopUp = async (topUpAmount: number) => {
     setLoading(true);
+    setTopUpError("");
     const { data, error } = await supabase.functions.invoke("wallet-topup", {
       body: { userId, amount: topUpAmount, currency: "USD" },
     });
     if (!error && data?.url) {
       window.open(data.url, "_blank");
+    } else {
+      const msg = data?.error ?? error?.message ?? "unknown error";
+      if (msg.includes("Missing") || msg.includes("Stripe")) {
+        setTopUpError("Stripe isn't set up yet — ask the admin to add STRIPE_SECRET_KEY to Supabase secrets.");
+      } else {
+        setTopUpError(`Top-up failed: ${msg}`);
+      }
     }
     setLoading(false);
   };
@@ -385,7 +394,10 @@ function TopUpButton({ userId, amount }: { userId: string; amount: number }) {
           </button>
         ))}
       </div>
-      <p className="text-[10px] text-text-muted text-center">Tap to add funds via Stripe · Opens new tab</p>
+      {topUpError
+        ? <p className="text-[10px] text-amber-600 text-center leading-snug">{topUpError}</p>
+        : <p className="text-[10px] text-text-muted text-center">Tap to add funds via Stripe · Opens new tab</p>
+      }
     </div>
   );
 }

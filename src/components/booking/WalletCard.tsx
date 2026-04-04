@@ -15,15 +15,24 @@ const TOPUP_AMOUNTS = [20, 50, 100, 200];
 export function WalletCard({ userId }: WalletCardProps) {
   const { wallet, transactions, loading, refresh } = useWallet(userId);
   const [topUpLoading, setTopUpLoading] = useState(false);
+  const [topUpError, setTopUpError]     = useState("");
   const [showTxns, setShowTxns]         = useState(false);
 
   const handleTopUp = async (amount: number) => {
     setTopUpLoading(true);
+    setTopUpError("");
     const { data, error } = await supabase.functions.invoke("wallet-topup", {
       body: { userId, amount, currency: "USD" },
     });
     if (!error && data?.url) {
       window.open(data.url, "_blank");
+    } else {
+      const msg = data?.error ?? error?.message ?? "";
+      if (msg.includes("Missing") || msg.includes("Stripe") || !msg) {
+        setTopUpError("Stripe not configured — add STRIPE_SECRET_KEY to Supabase to enable top-ups.");
+      } else {
+        setTopUpError(msg);
+      }
     }
     setTopUpLoading(false);
   };
@@ -81,7 +90,10 @@ export function WalletCard({ userId }: WalletCardProps) {
           </button>
         ))}
       </div>
-      <p className="text-[9px] text-text-muted text-center mt-1">Tap to top up via Stripe · Opens checkout</p>
+      {topUpError
+        ? <p className="text-[10px] text-amber-600 text-center mt-1 leading-snug px-1">{topUpError}</p>
+        : <p className="text-[9px] text-text-muted text-center mt-1">Tap to top up via Stripe · Opens checkout</p>
+      }
 
       {/* Transaction history */}
       {showTxns && (

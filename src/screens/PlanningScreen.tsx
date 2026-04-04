@@ -445,6 +445,9 @@ export function PlanningScreen() {
         </p>
       </div>
 
+      {/* OmniTrip Wallet — always visible when logged in */}
+      {user && <WalletCard userId={user.id} />}
+
       {/* Chat Input */}
       <div className="px-5">
         <Card className="!p-3">
@@ -923,11 +926,6 @@ export function PlanningScreen() {
               })}
             </div>
           </div>
-
-          {/* OmniTrip Wallet */}
-          {user && (
-            <WalletCard userId={user.id} />
-          )}
 
           {/* Destination Map */}
           {mapCenter && mapMarkers.length > 0 && (
