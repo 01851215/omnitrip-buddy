@@ -166,7 +166,15 @@ export async function generateTripSuggestions(
 
   // Build constraint instructions
   const constraintLines: string[] = [];
-  if (constraints?.budget) constraintLines.push(`- Total budget: $${constraints.budget}. Stay within this budget.`);
+  if (constraints?.budget) {
+    const days = constraints?.startDate && constraints?.endDate
+      ? Math.max(1, Math.ceil((new Date(constraints.endDate).getTime() - new Date(constraints.startDate).getTime()) / 86400000))
+      : null;
+    const totalBudget = days ? constraints.budget * days : null;
+    constraintLines.push(
+      `- Daily budget: $${constraints.budget}/day${totalBudget ? ` (total ~$${totalBudget} for ${days} days)` : ""}. The "totalBudget" field in your JSON MUST reflect this constraint.`
+    );
+  }
   if (constraints?.startDate && constraints?.endDate) {
     const start = new Date(constraints.startDate);
     const end = new Date(constraints.endDate);

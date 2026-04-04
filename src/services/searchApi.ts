@@ -48,10 +48,11 @@ interface DestinationInput {
 export async function searchDeals(
   destinations: DestinationInput[],
   originCity = "London",
+  dailyBudget?: number,
 ): Promise<{ deals: LiveDealResult; isLive: boolean }> {
   try {
     const { data, error } = await supabase.functions.invoke("search-deals", {
-      body: { destinations, originCity },
+      body: { destinations, originCity, dailyBudget },
     });
 
     if (error) throw error;
@@ -67,7 +68,7 @@ export async function searchDeals(
   }
 
   // Fallback: use static deals generator and convert to LiveDeal shape
-  const staticDeals = generateDeals(destinations, originCity);
+  const staticDeals = generateDeals(destinations, originCity, dailyBudget);
   const converted = Object.fromEntries(
     Object.entries(staticDeals).map(([cat, deals]) => [
       cat,

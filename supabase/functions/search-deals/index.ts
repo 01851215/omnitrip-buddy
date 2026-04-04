@@ -101,12 +101,22 @@ async function resolveIATA(city: string): Promise<string | null> {
 async function searchFlights(
   origin: string,
   destinations: DestinationInput[],
+  dailyBudget?: number,
 ): Promise<Deal[]> {
   const first = destinations[0];
   const originCode = await resolveIATA(origin);
   const destCode = first.iataCode ?? (await resolveIATA(first.name));
 
   if (!originCode || !destCode) return [];
+
+  const totalDays = destinations.reduce((sum, d) => {
+    const nights = Math.max(1, Math.round(
+      (new Date(d.departureDate).getTime() - new Date(d.arrivalDate).getTime()) / 86400000,
+    ));
+    return sum + nights;
+  }, 0);
+  // Flights should be at most ~40% of the total trip budget
+  const maxFlightPrice = dailyBudget ? Math.round(dailyBudget * totalDays * 0.4) : undefined;
 
   const data = await amadeusGet("/v2/shopping/flight-offers", {
     originLocationCode: originCode,
@@ -115,6 +125,7 @@ async function searchFlights(
     adults: "1",
     max: "5",
     currencyCode: "USD",
+    ...(maxFlightPrice ? { maxPrice: String(maxFlightPrice) } : {}),
   }) as { data?: Array<{ id: string; price: { total: string; currency: string }; itineraries: Array<{ segments: Array<{ departure: { iataCode: string }; arrival: { iataCode: string }; carrierCode: string }> }> }> } | null;
 
   if (!data?.data) return [];
@@ -236,9 +247,10 @@ serve(async (req) => {
   }
 
   try {
-    const { destinations, originCity = "London" } = await req.json() as {
+    const { destinations, originCity = "London", dailyBudget } = await req.json() as {
       destinations: DestinationInput[];
       originCity?: string;
+      dailyBudget?: number;
     };
 
     if (!destinations?.length) {
@@ -250,7 +262,7 @@ serve(async (req) => {
 
     // Run all searches in parallel
     const [flights, hotels, activities] = await Promise.all([
-      searchFlights(originCity, destinations),
+      searchFlights(originCity, destinations, dailyBudget),
       searchHotels(destinations),
       searchActivities(destinations),
     ]);

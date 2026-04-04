@@ -99,6 +99,15 @@ function priceVariant(base: number, seed: string, spread: number): number {
   return Math.round(base + (hash % spread) - spread / 2);
 }
 
+// Scale base prices to match the user's daily budget tier
+function getPriceMultiplier(dailyBudget: number): number {
+  if (dailyBudget <= 50)  return 0.45; // ~$144 flights, ~$38/night hotels
+  if (dailyBudget <= 80)  return 0.60; // ~$192 flights, ~$51/night hotels
+  if (dailyBudget <= 150) return 1.00; // ~$320 flights, ~$85/night hotels
+  if (dailyBudget <= 250) return 1.50; // ~$480 flights, ~$128/night hotels
+  return 2.20;                          // ~$704 flights, ~$187/night hotels
+}
+
 interface DestinationInput {
   name: string;
   country: string;
@@ -109,10 +118,15 @@ interface DestinationInput {
 export function generateDeals(
   destinations: DestinationInput[],
   originCity = "London",
+  dailyBudget?: number,
 ): Record<DealCategory, Deal[]> {
   if (destinations.length === 0) {
     return { flights: [], hotels: [], trains: [], activities: [], dining: [] };
   }
+
+  const m = dailyBudget ? getPriceMultiplier(dailyBudget) : 1.0;
+  const p = (base: number, seed: string, spread: number) =>
+    priceVariant(Math.round(base * m), seed, Math.max(2, Math.round(spread * m)));
 
   const firstDest = destinations[0];
   const lastDest = destinations[destinations.length - 1];
@@ -126,7 +140,7 @@ export function generateDeals(
       category: "flights",
       title: `${originCity} → ${firstDest.name}`,
       subtitle: `Direct & connecting flights · ${firstDest.country}`,
-      priceFrom: priceVariant(320, firstDest.name, 200),
+      priceFrom: p(320, firstDest.name, 200),
       currency: "USD",
       rating: 4.3,
       reviewCount: 2840,
@@ -143,7 +157,7 @@ export function generateDeals(
       category: "flights",
       title: `Budget flights to ${firstDest.name}`,
       subtitle: `Low-cost carriers · Flexible dates`,
-      priceFrom: priceVariant(210, firstDest.name + "2", 150),
+      priceFrom: p(210, firstDest.name + "2", 150),
       currency: "USD",
       rating: 4.0,
       reviewCount: 1520,
@@ -162,7 +176,7 @@ export function generateDeals(
       category: "hotels" as DealCategory,
       title: `Hotels in ${dest.name}`,
       subtitle: `${dest.country} · ${dest.arrivalDate} – ${dest.departureDate}`,
-      priceFrom: priceVariant(85, dest.name + "hotel", 60),
+      priceFrom: p(85, dest.name + "hotel", 60),
       currency: "USD",
       rating: 4.5,
       reviewCount: priceVariant(3200, dest.name, 1500),
@@ -181,7 +195,7 @@ export function generateDeals(
       category: "hotels" as DealCategory,
       title: `Airbnb in ${dest.name}`,
       subtitle: `Unique homes & guesthouses · ${dest.country}`,
-      priceFrom: priceVariant(65, dest.name + "airbnb", 50),
+      priceFrom: p(65, dest.name + "airbnb", 50),
       currency: "USD",
       rating: 4.7,
       reviewCount: priceVariant(1800, dest.name + "a", 900),
@@ -206,7 +220,7 @@ export function generateDeals(
       category: "trains",
       title: `${from.name} → ${to.name} by rail`,
       subtitle: `Scenic train · ${from.departureDate}`,
-      priceFrom: priceVariant(55, from.name + to.name + "train", 80),
+      priceFrom: p(55, from.name + to.name + "train", 80),
       currency: "USD",
       rating: 4.4,
       reviewCount: priceVariant(620, from.name, 400),
@@ -225,7 +239,7 @@ export function generateDeals(
       category: "trains",
       title: `Trains around ${firstDest.name}`,
       subtitle: `Regional rail passes & day trips`,
-      priceFrom: priceVariant(30, firstDest.name + "rail", 40),
+      priceFrom: p(30, firstDest.name + "rail", 40),
       currency: "USD",
       rating: 4.2,
       reviewCount: 310,
@@ -264,7 +278,7 @@ export function generateDeals(
         category: "activities" as DealCategory,
         title: `${at.label} in ${dest.name}`,
         subtitle: `${dest.country} · Instant confirmation`,
-        priceFrom: priceVariant(25, dest.name + at.label, 50),
+        priceFrom: p(25, dest.name + at.label, 50),
         currency: "USD",
         rating: 4.6,
         reviewCount: priceVariant(890, dest.name + ai, 600),
@@ -310,7 +324,7 @@ export function generateDeals(
         category: "dining" as DealCategory,
         title: `${dt.label} in ${dest.name}`,
         subtitle: `${dest.country} · Reserve your table`,
-        priceFrom: priceVariant(18, dest.name + dt.label, 30),
+        priceFrom: p(18, dest.name + dt.label, 30),
         currency: "USD",
         rating: 4.5,
         reviewCount: priceVariant(440, dest.name + dti, 300),

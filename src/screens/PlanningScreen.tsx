@@ -372,8 +372,13 @@ export function PlanningScreen() {
         };
       });
 
+      const budget = customBudget && !isNaN(parseFloat(customBudget))
+        ? parseFloat(customBudget)
+        : budgetStyle
+          ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount
+          : undefined;
       setDealsLoading((prev) => ({ ...prev, [route.id]: true }));
-      searchDeals(destInputs, originCity || "My Location").then(({ deals, isLive }) => {
+      searchDeals(destInputs, originCity || "My Location", budget).then(({ deals, isLive }) => {
         setRouteDeals((prev) => ({ ...prev, [route.id]: deals }));
         setRouteDealsLive((prev) => ({ ...prev, [route.id]: isLive }));
         setDealsLoading((prev) => ({ ...prev, [route.id]: false }));
@@ -386,30 +391,43 @@ export function PlanningScreen() {
   };
 
   // Build map data from the recommended route only (numbered markers + polyline)
-  const { mapMarkers, mapPolyline, mapCenter, routeBreadcrumb } = useMemo(() => {
+  const { mapMarkers, mapPolyline, mapCenter, routeBreadcrumb, gmapsUrl } = useMemo(() => {
     if (!result || result.routes.length === 0) {
-      return { mapMarkers: [], mapPolyline: undefined, mapCenter: null, routeBreadcrumb: "" };
+      return { mapMarkers: [], mapPolyline: undefined, mapCenter: null, routeBreadcrumb: "", gmapsUrl: null };
     }
     const recommended = result.routes.find((r) => r.recommended) ?? result.routes[0];
     const dests = recommended.generatedData?.destinations
       ?? templates.find((t) => t.id === recommended.templateId)?.destinations
       ?? [];
 
-    const markers: MapMarker[] = dests.map((d, i) => ({
-      id: `map-${d.name}`,
-      lat: d.lat,
-      lng: d.lng,
-      name: d.name,
-      label: String(i + 1),
-      popup: `${d.name}, ${d.country}${("days" in d && d.days) ? ` — ${d.days}d` : ""}`,
-    }));
+    const markers: MapMarker[] = dests.map((d, i) => {
+      const activities = ("activities" in d && Array.isArray(d.activities)) ? d.activities : [];
+      const topActs = activities.slice(0, 4).map((a: { title: string }) => `• ${a.title}`).join("<br/>");
+      const daysLabel = ("days" in d && d.days) ? ` · ${d.days}d` : "";
+      return {
+        id: `map-${d.name}`,
+        lat: d.lat,
+        lng: d.lng,
+        name: d.name,
+        label: String(i + 1),
+        popup: `<strong>${d.name}</strong>${daysLabel}${topActs ? `<br/><span style="color:#6B7280;font-size:11px;line-height:1.6">${topActs}</span>` : ""}`,
+      };
+    });
 
     const polyline: [number, number][] = dests.map((d) => [d.lat, d.lng]);
     const center: [number, number] | null = dests.length > 0 ? [dests[0].lat, dests[0].lng] : null;
     const breadcrumb = dests.map((d) => d.name).join(" → ");
 
-    return { mapMarkers: markers, mapPolyline: polyline, mapCenter: center, routeBreadcrumb: breadcrumb };
-  }, [result]);
+    // Google Maps multi-city directions URL
+    const cityNames = dests.map((d) => encodeURIComponent(d.name));
+    const gmaps = cityNames.length >= 2
+      ? `https://www.google.com/maps/dir/?api=1&origin=${originCity ? encodeURIComponent(originCity) : cityNames[0]}&destination=${cityNames[cityNames.length - 1]}&waypoints=${cityNames.slice(0, -1).join("|")}`
+      : cityNames.length === 1
+        ? `https://www.google.com/maps/search/?api=1&query=${cityNames[0]}`
+        : null;
+
+    return { mapMarkers: markers, mapPolyline: polyline, mapCenter: center, routeBreadcrumb: breadcrumb, gmapsUrl: gmaps };
+  }, [result, originCity]);
 
   const showResults = result !== null;
 
@@ -825,7 +843,18 @@ export function PlanningScreen() {
                             {route.duration}
                           </span>
                           <span className="text-xs text-text-muted ml-2">
-                            {route.budget}
+                            {(() => {
+                              const dailyBudget = customBudget && !isNaN(parseFloat(customBudget))
+                                ? parseFloat(customBudget)
+                                : budgetStyle
+                                  ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount ?? null
+                                  : null;
+                              if (dailyBudget) {
+                                const days = parseInt(route.duration) || 7;
+                                return `~$${(dailyBudget * days).toLocaleString()} total`;
+                              }
+                              return route.budget;
+                            })()}
                           </span>
                         </div>
                         {createdTrips[route.id] ? (
@@ -901,6 +930,16 @@ export function PlanningScreen() {
                   height="220px"
                 />
               </div>
+              {gmapsUrl && (
+                <a
+                  href={gmapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 flex items-center justify-center gap-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg py-2 hover:bg-primary/5 transition-colors"
+                >
+                  <span>🗺</span> Open route in Google Maps
+                </a>
+              )}
             </div>
           )}
 

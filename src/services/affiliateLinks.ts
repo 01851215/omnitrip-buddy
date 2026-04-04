@@ -15,6 +15,13 @@ function fmt(date: string | Date): string {
   return d.toISOString().split("T")[0];
 }
 
+// Strip district/neighborhood prefix — "Wembley, Greater London" → "Greater London", "London" → "London"
+function cleanCityName(city: string): string {
+  const parts = city.split(",").map((p) => p.trim()).filter(Boolean);
+  // If 2+ parts, prefer the last meaningful part (usually the actual city/region)
+  return parts.length >= 2 ? parts[parts.length - 1] : parts[0] ?? city;
+}
+
 // ── Hotels ────────────────────────────────────────────────────────────────
 
 export function bookingComHotel(
@@ -91,8 +98,8 @@ export function skyscannerFlight(
   departDate: string,
   returnDate?: string,
 ): AffiliateLink {
-  const dest = destination.toLowerCase().replace(/\s+/g, "-");
-  const orig = origin.toLowerCase().replace(/\s+/g, "-");
+  const orig = cleanCityName(origin).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const dest = cleanCityName(destination).toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const d = fmt(departDate).replace(/-/g, "");
   const path = returnDate
     ? `flights/${orig}/${dest}/${d}/${fmt(returnDate).replace(/-/g, "")}/`
@@ -145,9 +152,11 @@ export function opodoFlight(
   destination: string,
   departDate: string,
 ): AffiliateLink {
+  const orig = encodeURIComponent(cleanCityName(origin));
+  const dest = encodeURIComponent(cleanCityName(destination));
   return {
     provider: "Opodo",
-    url: `https://www.opodo.com/flights/${origin}-${destination}/${fmt(departDate)}/1adults/Economy/`,
+    url: `https://www.opodo.com/flights/${orig}-${dest}/${fmt(departDate)}/1adults/Economy/`,
     logo: "🌍",
     color: "bg-purple-50",
   };
@@ -242,7 +251,7 @@ export function theForkDining(destination: string): AffiliateLink {
 export function tripadvisorRestaurants(destination: string): AffiliateLink {
   return {
     provider: "Tripadvisor",
-    url: `https://www.tripadvisor.com/Restaurants-g${encodeURIComponent(destination)}.html`,
+    url: `https://www.tripadvisor.com/Search?q=${encodeURIComponent(destination + " restaurants")}`,
     logo: "⭐",
     color: "bg-green-50",
   };
