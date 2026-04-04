@@ -13,7 +13,7 @@ interface WalletCardProps {
 const TOPUP_AMOUNTS = [20, 50, 100, 200];
 
 export function WalletCard({ userId }: WalletCardProps) {
-  const { wallet, transactions, loading, refresh } = useWallet(userId);
+  const { wallet, transactions, loading } = useWallet(userId);
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpError, setTopUpError]     = useState("");
   const [showTxns, setShowTxns]         = useState(false);

@@ -381,7 +381,7 @@ export function DealCard({ deal, tripId, userId, booking, wallet, onBookingConfi
           provider={live ? (deal as LiveDeal).provider : (deal as Deal).affiliateLinks?.[0]?.provider ?? "OmniTrip"}
           wallet={wallet}
           onClose={() => setShowPaymentSheet(false)}
-          onSuccess={(bId) => {
+          onSuccess={() => {
             setShowPaymentSheet(false);
             setMarkedBooked(true);
             onBookingConfirmed?.();

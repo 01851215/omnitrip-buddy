@@ -914,7 +914,7 @@ export function PlanningScreen() {
                             customBudget && !isNaN(parseFloat(customBudget))
                               ? parseFloat(customBudget)
                               : budgetStyle
-                                ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount ?? null
+                                ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount ?? undefined
                                 : undefined
                           }
                           tripDays={undefined}
