@@ -1,7 +1,7 @@
 // Central OpenAI ChatGPT API wrapper
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY as string | undefined;
-const OPENAI_MODEL = (import.meta.env.VITE_OPENAI_MODEL as string) || "gpt-5.4";
+const OPENAI_MODEL = (import.meta.env.VITE_OPENAI_MODEL as string) || "gpt-4o-mini";
 
 async function tryModel(
   model: string,
@@ -30,7 +30,7 @@ async function tryModel(
   return data.choices?.[0]?.message?.content ?? null;
 }
 
-const FALLBACK_MODELS = ["gpt-5.4-mini", "gpt-4o", "gpt-4o-mini"];
+const FALLBACK_MODELS = ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"];
 
 export async function callChatGPT(
   systemPrompt: string,
