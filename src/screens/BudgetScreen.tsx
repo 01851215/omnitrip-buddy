@@ -9,7 +9,7 @@ import { useExpenses, useBudget } from "../hooks/useExpenses";
 import { Card } from "../components/ui/Card";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Spinner } from "../components/ui/Spinner";
-import { useBuddyStore } from "../stores/buddyStore";
+import { useBuddyPanelStore } from "../stores/buddyPanelStore";
 import { Button } from "../components/ui/Button";
 import { supabase } from "../services/supabase";
 import { convertToUSD, SUPPORTED_CURRENCIES } from "../utils/currency";
@@ -114,13 +114,15 @@ function BudgetSetupCard({ tripId, onCreated }: { tripId: string; onCreated: () 
   const [daily, setDaily] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
     const totalAmount = parseFloat(total);
     if (!totalAmount) return;
+    setError(null);
     const dailyAmount = parseFloat(daily) || +(totalAmount / 30).toFixed(2);
     setSaving(true);
-    await supabase.from("budgets").insert({
+    const { error: dbError } = await supabase.from("budgets").insert({
       trip_id: tripId,
       total_planned_amount: totalAmount,
       total_planned_currency: currency,
@@ -129,6 +131,10 @@ function BudgetSetupCard({ tripId, onCreated }: { tripId: string; onCreated: () 
       daily_target_currency: currency,
     });
     setSaving(false);
+    if (dbError) {
+      setError(dbError.message);
+      return;
+    }
     onCreated();
   };
 
@@ -144,12 +150,14 @@ function BudgetSetupCard({ tripId, onCreated }: { tripId: string; onCreated: () 
           placeholder="Total budget"
           value={total}
           onChange={(e) => setTotal(e.target.value)}
-          className="flex-1 px-3 py-2 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
+          aria-label="Total budget"
+          className="flex-1 px-3 py-2 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary"
         />
         <select
           value={currency}
           onChange={(e) => setCurrency(e.target.value)}
-          className="w-20 px-2 py-2 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
+          aria-label="Currency"
+          className="w-20 px-2 py-2 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary"
         >
           {SUPPORTED_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -159,10 +167,12 @@ function BudgetSetupCard({ tripId, onCreated }: { tripId: string; onCreated: () 
         placeholder="Daily target (optional)"
         value={daily}
         onChange={(e) => setDaily(e.target.value)}
-        className="w-full px-3 py-2 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary mb-3"
+        aria-label="Daily target"
+        className="w-full px-3 py-2 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary mb-3"
       />
+      {error && <p className="text-xs text-red-500" role="alert">{error}</p>}
       <Button onClick={handleCreate} disabled={saving} className="w-full">
-        {saving ? "Saving..." : "Set Budget"}
+        {saving ? "Saving\u2026" : "Set Budget"}
       </Button>
     </Card>
   );
@@ -238,9 +248,10 @@ export function BudgetScreen() {
   const { trip } = useActiveTrip();
   const { expenses, refresh: refreshExpenses } = useExpenses(trip?.id);
   const { budget, loading: budgetLoading, refresh: refreshBudget } = useBudget(trip?.id);
-  const { showOverlay, setSpeechText } = useBuddyStore();
+  const { openWithMessage } = useBuddyPanelStore();
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [askingBuddy, setAskingBuddy] = useState(false);
 
   // Compute totals inline from the shared expenses array (avoids stale version in useCategoryTotals)
   const totals: Record<ExpenseCategory, number> = {
@@ -271,15 +282,51 @@ export function BudgetScreen() {
   const areaStroke = isOverBudget ? "#DC2626" : "#2D6A5A";
   const gradientId = isOverBudget ? "redGrad" : "tealGrad";
 
-  // Dynamic Buddy prompt
-  const highestCategory = (Object.keys(totals) as ExpenseCategory[])
-    .reduce((a, b) => totals[a] >= totals[b] ? a : b, "food" as ExpenseCategory);
+  // Dynamic Buddy prompt — build a detailed breakdown for real GPT analysis
+  const categoryBreakdown = (Object.keys(totals) as ExpenseCategory[])
+    .filter((k) => totals[k] > 0)
+    .map((k) => `  - ${categoryLabel[k]}: ${formatAmount(totals[k])} (${total > 0 ? Math.round((totals[k] / total) * 100) : 0}%)`)
+    .join("\n");
+
+  const recentExpensesList = [...sorted].slice(-8).reverse()
+    .map((e) => `  - ${e.description}: ${formatAmount(e.convertedAmount)} (${e.category})`)
+    .join("\n");
+
+  const daysLeft = budget && trip?.endDate
+    ? Math.max(Math.ceil((new Date(trip.endDate).getTime() - Date.now()) / 86400000), 0)
+    : null;
+
   const buddyPrompt = budget
-    ? `I've spent ${formatAmount(total)} of my ${formatAmount(budget.totalPlanned.amount)} budget. ` +
-      `My biggest spending category is ${categoryLabel[highestCategory]} at ${formatAmount(totals[highestCategory])}. ` +
-      `How am I doing and what should I watch?`
-    : `I've spent ${formatAmount(total)} so far on this trip with no set budget. ` +
-      `My biggest category is ${categoryLabel[highestCategory]}. Any advice?`;
+    ? [
+        `Analyze my travel budget in detail and give me specific, actionable advice:`,
+        ``,
+        `BUDGET: ${formatAmount(budget.totalPlanned.amount)} total, ${formatAmount(total)} spent (${Math.round((total / budget.totalPlanned.amount) * 100)}% used)`,
+        `REMAINING: ${formatAmount(Math.max(budget.totalPlanned.amount - total, 0))}`,
+        `DAILY TARGET: ${formatAmount(budget.dailyTarget.amount)}/day`,
+        daysLeft !== null ? `DAYS LEFT: ${daysLeft}` : null,
+        daysLeft !== null && daysLeft > 0 ? `SAFE DAILY SPEND: ${formatAmount(Math.max(budget.totalPlanned.amount - total, 0) / daysLeft)}/day` : null,
+        ``,
+        `SPENDING BY CATEGORY:`,
+        categoryBreakdown,
+        ``,
+        `RECENT EXPENSES:`,
+        recentExpensesList || `  (none yet)`,
+        ``,
+        `Give me a short, friendly summary (4-5 sentences max). Mention my biggest spending area, whether I'm on track, and one or two specific tips to save money. Keep it casual like a friend giving advice — no bullet points or numbered lists.`,
+      ].filter(Boolean).join("\n")
+    : [
+        `I'm tracking expenses on my trip but haven't set a budget yet. Here's my spending:`,
+        ``,
+        `TOTAL SPENT: ${formatAmount(total)}`,
+        ``,
+        `SPENDING BY CATEGORY:`,
+        categoryBreakdown || `  (none yet)`,
+        ``,
+        `RECENT EXPENSES:`,
+        recentExpensesList || `  (none yet)`,
+        ``,
+        `Give me a short, friendly summary (3-4 sentences max). Suggest a reasonable budget, point out where I could save, and give one practical tip. Keep it casual like a friend — no bullet points or numbered lists.`,
+      ].join("\n");
 
   const displayedExpenses = showAll ? [...sorted].reverse() : [...sorted].slice(-5).reverse();
 
@@ -463,7 +510,7 @@ export function BudgetScreen() {
                     await supabase.from("expenses").delete().eq("id", e.id);
                     refreshExpenses();
                   }}
-                  className="text-text-muted hover:text-red-400 transition-colors text-sm flex-shrink-0"
+                  className="text-text-muted hover:text-red-400 transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 text-sm flex-shrink-0"
                   aria-label="Delete expense"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -479,18 +526,30 @@ export function BudgetScreen() {
         )}
       </div>
 
-      {/* Buddy Reassurance */}
+      {/* Ask Buddy */}
       <div className="px-5 pb-4">
-        <Button
-          variant="ghost"
-          className="w-full !text-xs"
+        <button
+          type="button"
+          disabled={askingBuddy}
           onClick={() => {
-            setSpeechText(buddyPrompt);
-            showOverlay(null);
+            setAskingBuddy(true);
+            openWithMessage(buddyPrompt);
+            setTimeout(() => setAskingBuddy(false), 1500);
           }}
+          className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-semibold text-sm transition-all bg-primary text-white shadow-sm active:scale-[0.98] disabled:opacity-70"
         >
-          Ask Buddy about your budget
-        </Button>
+          {askingBuddy ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Asking Buddy…
+            </>
+          ) : (
+            <>
+              <span className="text-base">🤖</span>
+              Ask Buddy about your budget
+            </>
+          )}
+        </button>
       </div>
 
       {/* Quick Log FAB */}
@@ -531,12 +590,16 @@ function QuickLog({
   const [category, setCategory] = useState<ExpenseCategory>("food");
   const [desc, setDesc] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSave = async () => {
-    if (!tripId || !amount || saving) return;
+    if (!tripId) { setError("No active trip found. Create or activate a trip first."); return; }
+    if (!amount) { setError("Please enter an amount."); return; }
+    if (saving) return;
+    setError(null);
     setSaving(true);
     const raw = parseFloat(amount);
-    const { error } = await supabase.from("expenses").insert({
+    const { error: dbError } = await supabase.from("expenses").insert({
       trip_id: tripId,
       amount: raw,
       currency,
@@ -548,10 +611,12 @@ function QuickLog({
       buddy_suggested: false,
     });
     setSaving(false);
-    if (!error) {
-      onSaved();
-      onClose();
+    if (dbError) {
+      setError(dbError.message);
+      return;
     }
+    onSaved();
+    onClose();
   };
 
   return (
@@ -566,13 +631,15 @@ function QuickLog({
             placeholder="Amount"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="flex-1 px-4 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
+            aria-label="Expense amount"
+            className="flex-1 px-4 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary"
             autoFocus
           />
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
-            className="w-24 px-2 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
+            aria-label="Expense currency"
+            className="w-24 px-2 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary"
           >
             {SUPPORTED_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -583,7 +650,7 @@ function QuickLog({
               key={c}
               type="button"
               onClick={() => setCategory(c)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 ${
                 c === category ? "bg-primary text-white" : "bg-cream-dark text-text-secondary"
               }`}
             >
@@ -596,13 +663,15 @@ function QuickLog({
           placeholder="Description (optional)"
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus:border-primary"
+          aria-label="Expense description"
+          className="w-full px-4 py-3 rounded-xl border border-cream-dark bg-cream text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary"
         />
+        {error && <p className="text-xs text-red-500" role="alert">{error}</p>}
         <div className="flex gap-3">
           <Button onClick={handleSave} className="flex-1" disabled={saving}>
             {saving ? (
               <span className="flex items-center gap-2 justify-center">
-                <Spinner size="sm" /> Saving…
+                <Spinner size="sm" /> Saving\u2026
               </span>
             ) : "Save"}
           </Button>

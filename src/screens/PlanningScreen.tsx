@@ -458,13 +458,15 @@ export function PlanningScreen() {
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
               placeholder={t.planning.searchPlaceholder}
-              className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-text-muted"
+              aria-label="Search destinations"
+              autoComplete="off"
+              className="flex-1 bg-transparent text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 placeholder:text-text-muted"
             />
             <button
               type="button"
               onClick={() => handleSubmit()}
               disabled={loading}
-              className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 disabled:opacity-50"
+              className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary/50"
             >
               <svg
                 width="14"
@@ -522,7 +524,7 @@ export function PlanningScreen() {
                       setBudgetStyle(budgetStyle === p.value ? null : p.value);
                       setCustomBudget("");
                     }}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 ${
                       budgetStyle === p.value
                         ? "bg-primary/10 text-primary border-primary/30"
                         : "bg-surface border-cream-dark text-text-muted"
@@ -546,7 +548,9 @@ export function PlanningScreen() {
                       setBudgetStyle(null);
                     }}
                     placeholder={t.planning.custom}
-                    className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                    aria-label="Budget amount"
+                    autoComplete="off"
+                    className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                   />
                 </div>
               </div>
@@ -562,14 +566,18 @@ export function PlanningScreen() {
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                  aria-label="Start date"
+                  autoComplete="off"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                 />
                 <span className="text-text-muted text-xs self-center">{t.planning.to}</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                  aria-label="End date"
+                  autoComplete="off"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                 />
               </div>
             </div>
@@ -587,7 +595,7 @@ export function PlanningScreen() {
                     onClick={() =>
                       setIntensity(intensity === opt.value ? null : opt.value)
                     }
-                    className={`flex-1 px-3 py-2 rounded-lg border text-center transition-colors ${
+                    className={`flex-1 px-3 py-2 rounded-lg border text-center transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 ${
                       intensity === opt.value
                         ? "bg-primary/10 text-primary border-primary/30"
                         : "bg-surface border-cream-dark text-text-muted"
@@ -613,8 +621,10 @@ export function PlanningScreen() {
                   type="text"
                   value={originCity}
                   onChange={(e) => setOriginCity(e.target.value)}
+                  aria-label="Departure city"
+                  autoComplete="off"
                   placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                 />
                 {locationPermission !== "denied" && !originCity && (
                   <button
@@ -639,9 +649,11 @@ export function PlanningScreen() {
               <textarea
                 value={refinements}
                 onChange={(e) => setRefinements(e.target.value)}
+                aria-label="Special requests"
+                autoComplete="off"
                 placeholder="e.g. avoid tourist traps, focus on local food, no beach…"
                 rows={2}
-                className="w-full px-3 py-2 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40 resize-none"
+                className="w-full px-3 py-2 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 resize-none"
               />
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {REFINEMENT_CHIPS.map((chip) => {
@@ -657,7 +669,7 @@ export function PlanningScreen() {
                             : prev ? `${prev}, ${chip}` : chip
                         )
                       }
-                      className={`px-2.5 py-1 rounded-full border text-[10px] font-medium transition-colors ${
+                      className={`px-2.5 py-1 rounded-full border text-[10px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 ${
                         active
                           ? "bg-primary/10 text-primary border-primary/30"
                           : "bg-surface border-cream-dark text-text-muted"
@@ -722,7 +734,7 @@ export function PlanningScreen() {
                 key={p}
                 type="button"
                 onClick={() => handleSubmit(p)}
-                className="w-full text-left px-4 py-3 rounded-xl bg-surface border border-cream-dark text-sm text-text-secondary hover:bg-cream-dark transition-colors"
+                className="w-full text-left px-4 py-3 rounded-xl bg-surface border border-cream-dark text-sm text-text-secondary hover:bg-cream-dark transition-colors focus-visible:ring-2 focus-visible:ring-primary/50"
               >
                 {p}
               </button>
@@ -917,7 +929,7 @@ export function PlanningScreen() {
                                 ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount ?? undefined
                                 : undefined
                           }
-                          tripDays={undefined}
+                          tripDays={parseInt(route.duration) || 7}
                         />
                       )}
                     </div>
@@ -959,7 +971,7 @@ export function PlanningScreen() {
                   href={gmapsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 flex items-center justify-center gap-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg py-2 hover:bg-primary/5 transition-colors"
+                  className="mt-2 flex items-center justify-center gap-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg py-2 hover:bg-primary/5 transition-colors focus-visible:ring-2 focus-visible:ring-primary/50"
                 >
                   <span>🗺</span> Open route in Google Maps
                 </a>
@@ -1048,7 +1060,7 @@ export function PlanningScreen() {
                       setBudgetStyle(budgetStyle === p.value ? null : p.value);
                       setCustomBudget("");
                     }}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 ${
                       budgetStyle === p.value
                         ? "bg-primary/10 text-primary border-primary/30"
                         : "bg-surface border-cream-dark text-text-muted"
@@ -1068,7 +1080,9 @@ export function PlanningScreen() {
                       setBudgetStyle(null);
                     }}
                     placeholder={t.planning.custom}
-                    className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                    aria-label="Budget amount"
+                    autoComplete="off"
+                    className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                   />
                 </div>
               </div>
@@ -1084,14 +1098,18 @@ export function PlanningScreen() {
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                  aria-label="Start date"
+                  autoComplete="off"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                 />
                 <span className="text-text-muted text-xs self-center">{t.planning.to}</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                  aria-label="End date"
+                  autoComplete="off"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                 />
               </div>
             </div>
@@ -1107,7 +1125,7 @@ export function PlanningScreen() {
                     key={opt.value}
                     type="button"
                     onClick={() => setIntensity(intensity === opt.value ? null : opt.value)}
-                    className={`flex-1 px-3 py-2 rounded-lg border text-center transition-colors ${
+                    className={`flex-1 px-3 py-2 rounded-lg border text-center transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 ${
                       intensity === opt.value
                         ? "bg-primary/10 text-primary border-primary/30"
                         : "bg-surface border-cream-dark text-text-muted"
@@ -1133,8 +1151,10 @@ export function PlanningScreen() {
                   type="text"
                   value={originCity}
                   onChange={(e) => setOriginCity(e.target.value)}
+                  aria-label="Departure city"
+                  autoComplete="off"
                   placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40"
+                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
                 />
                 {locationPermission !== "denied" && !originCity && (
                   <button
@@ -1159,9 +1179,11 @@ export function PlanningScreen() {
               <textarea
                 value={refinements}
                 onChange={(e) => setRefinements(e.target.value)}
+                aria-label="Special requests"
+                autoComplete="off"
                 placeholder="e.g. avoid tourist traps, focus on local food…"
                 rows={2}
-                className="w-full px-3 py-2 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus:border-primary/40 resize-none"
+                className="w-full px-3 py-2 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 resize-none"
               />
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {REFINEMENT_CHIPS.map((chip) => {
@@ -1177,7 +1199,7 @@ export function PlanningScreen() {
                             : prev ? `${prev}, ${chip}` : chip
                         )
                       }
-                      className={`px-2.5 py-1 rounded-full border text-[10px] font-medium transition-colors ${
+                      className={`px-2.5 py-1 rounded-full border text-[10px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/50 ${
                         active
                           ? "bg-primary/10 text-primary border-primary/30"
                           : "bg-surface border-cream-dark text-text-muted"
