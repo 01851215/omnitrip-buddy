@@ -43,6 +43,7 @@ export interface PlanningConstraints {
   startDate?: string;
   endDate?: string;
   intensity?: "relaxed" | "balanced" | "packed";
+  originCity?: string;
   userHistoryContext?: string;
 }
 
@@ -186,6 +187,11 @@ export async function generateTripSuggestions(
   if (constraints?.intensity) {
     const actPerDay = constraints.intensity === "relaxed" ? "2-3" : constraints.intensity === "packed" ? "5-6" : "3-4";
     constraintLines.push(`- Intensity: ${constraints.intensity} (${actPerDay} activities per day). Adjust the number of activities accordingly.`);
+  }
+  if (constraints?.originCity) {
+    constraintLines.push(
+      `- Flying from: ${constraints.originCity}. Suggest destinations reachable from here and factor flight time and cost into the plan.`
+    );
   }
 
   const constraintBlock = constraintLines.length > 0

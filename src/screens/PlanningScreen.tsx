@@ -52,6 +52,22 @@ const REFINEMENT_CHIPS = [
   "No theme parks", "Outdoor & nature", "Art & culture",
 ];
 
+/** Today's date as an ISO yyyy-mm-dd string in the user's local timezone. */
+const todayISO = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+type RequiredErrors = {
+  budget?: string;
+  origin?: string;
+  startDate?: string;
+  endDate?: string;
+};
+
 export function PlanningScreen() {
   const {
     query, setQuery,
@@ -127,18 +143,51 @@ export function PlanningScreen() {
     if (startDate) c.startDate = startDate;
     if (endDate) c.endDate = endDate;
     if (intensity) c.intensity = intensity;
+    if (originCity.trim()) c.originCity = originCity.trim();
     if (history) c.userHistoryContext = historyToPromptContext(history);
     return c;
   };
 
+  const validateRequired = (): RequiredErrors => {
+    const errs: RequiredErrors = {};
+    const parsedCustom = parseFloat(customBudget);
+    const hasBudget = (!isNaN(parsedCustom) && parsedCustom > 0) || !!budgetStyle;
+    if (!hasBudget) errs.budget = "Pick a budget style or enter a custom amount";
+    if (!originCity.trim()) errs.origin = "Where are you flying from?";
+    const today = todayISO();
+    if (!startDate) {
+      errs.startDate = "Pick a start date";
+    } else if (startDate < today) {
+      errs.startDate = "Start date can't be in the past";
+    }
+    if (!endDate) {
+      errs.endDate = "Pick an end date";
+    } else if (endDate < today) {
+      errs.endDate = "End date can't be in the past";
+    } else if (startDate && endDate < startDate) {
+      errs.endDate = "End date must be on or after start date";
+    }
+    return errs;
+  };
+
+  const errors = validateRequired();
+  const isValid = Object.keys(errors).length === 0;
+
   const handleSubmit = async (text?: string) => {
+    // Require budget, origin, and future-dated start + end before planning.
+    if (!isValid) {
+      if (!showConstraints) setShowConstraints(true);
+      return;
+    }
+
     const baseQ = (text ?? query).trim();
-    if (!baseQ) return;
     if (text) setQuery(text);
 
-    const q = refinements.trim()
-      ? `${baseQ}. Preferences: ${refinements.trim()}`
-      : baseQ;
+    // Query and refinements are both optional add-ons — merge whichever are present.
+    const parts: string[] = [];
+    if (baseQ) parts.push(baseQ);
+    if (refinements.trim()) parts.push(`Preferences: ${refinements.trim()}`);
+    const q = parts.length > 0 ? parts.join(". ") : "Plan me a trip based on my constraints.";
 
     const constraints = buildConstraints();
     constraintsRef.current = constraints;
@@ -465,7 +514,9 @@ export function PlanningScreen() {
             <button
               type="button"
               onClick={() => handleSubmit()}
-              disabled={loading}
+              disabled={loading || !isValid}
+              aria-label={isValid ? "Plan trip" : "Fill budget, origin, and future travel dates to plan"}
+              title={isValid ? undefined : "Fill budget, origin, and future travel dates to plan"}
               className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary/50"
             >
               <svg
@@ -487,6 +538,12 @@ export function PlanningScreen() {
 
       {/* Constraints */}
       <div className="px-5">
+        {!isValid && (
+          <p className="text-xs text-red-500 mb-2 flex items-center gap-1">
+            <span aria-hidden>⚠</span>
+            Add your budget, departure city, and travel dates below to plan a trip.
+          </p>
+        )}
         <button
           type="button"
           onClick={() => setShowConstraints(!showConstraints)}
@@ -550,10 +607,15 @@ export function PlanningScreen() {
                     placeholder={t.planning.custom}
                     aria-label="Budget amount"
                     autoComplete="off"
-                    className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                    className={`w-24 pl-6 pr-2 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                      errors.budget ? "border-red-400" : "border-cream-dark"
+                    }`}
                   />
                 </div>
               </div>
+              {errors.budget && (
+                <p className="text-[11px] text-red-500 mt-1.5">{errors.budget}</p>
+              )}
             </div>
 
             {/* Dates */}
@@ -565,21 +627,34 @@ export function PlanningScreen() {
                 <input
                   type="date"
                   value={startDate}
+                  min={todayISO()}
                   onChange={(e) => setStartDate(e.target.value)}
                   aria-label="Start date"
+                  aria-invalid={!!errors.startDate}
                   autoComplete="off"
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                  className={`flex-1 px-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                    errors.startDate ? "border-red-400" : "border-cream-dark"
+                  }`}
                 />
                 <span className="text-text-muted text-xs self-center">{t.planning.to}</span>
                 <input
                   type="date"
                   value={endDate}
+                  min={startDate || todayISO()}
                   onChange={(e) => setEndDate(e.target.value)}
                   aria-label="End date"
+                  aria-invalid={!!errors.endDate}
                   autoComplete="off"
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                  className={`flex-1 px-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                    errors.endDate ? "border-red-400" : "border-cream-dark"
+                  }`}
                 />
               </div>
+              {(errors.startDate || errors.endDate) && (
+                <p className="text-[11px] text-red-500 mt-1.5">
+                  {errors.startDate ?? errors.endDate}
+                </p>
+              )}
             </div>
 
             {/* Activities Per Day */}
@@ -622,9 +697,12 @@ export function PlanningScreen() {
                   value={originCity}
                   onChange={(e) => setOriginCity(e.target.value)}
                   aria-label="Departure city"
+                  aria-invalid={!!errors.origin}
                   autoComplete="off"
                   placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                  className={`w-full pl-9 pr-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                    errors.origin ? "border-red-400" : "border-cream-dark"
+                  }`}
                 />
                 {locationPermission !== "denied" && !originCity && (
                   <button
@@ -639,6 +717,9 @@ export function PlanningScreen() {
                   </button>
                 )}
               </div>
+              {errors.origin && (
+                <p className="text-[11px] text-red-500 mt-1.5">{errors.origin}</p>
+              )}
             </div>
 
             {/* Refinements */}
@@ -688,6 +769,7 @@ export function PlanningScreen() {
                 variant="primary"
                 className="w-full !text-xs"
                 onClick={() => handleSubmit()}
+                disabled={loading || !isValid}
               >
                 ↻ Update Plan
               </Button>
@@ -1082,10 +1164,15 @@ export function PlanningScreen() {
                     placeholder={t.planning.custom}
                     aria-label="Budget amount"
                     autoComplete="off"
-                    className="w-24 pl-6 pr-2 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                    className={`w-24 pl-6 pr-2 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                      errors.budget ? "border-red-400" : "border-cream-dark"
+                    }`}
                   />
                 </div>
               </div>
+              {errors.budget && (
+                <p className="text-[11px] text-red-500 mt-1.5">{errors.budget}</p>
+              )}
             </div>
 
             {/* Dates */}
@@ -1097,21 +1184,34 @@ export function PlanningScreen() {
                 <input
                   type="date"
                   value={startDate}
+                  min={todayISO()}
                   onChange={(e) => setStartDate(e.target.value)}
                   aria-label="Start date"
+                  aria-invalid={!!errors.startDate}
                   autoComplete="off"
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                  className={`flex-1 px-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                    errors.startDate ? "border-red-400" : "border-cream-dark"
+                  }`}
                 />
                 <span className="text-text-muted text-xs self-center">{t.planning.to}</span>
                 <input
                   type="date"
                   value={endDate}
+                  min={startDate || todayISO()}
                   onChange={(e) => setEndDate(e.target.value)}
                   aria-label="End date"
+                  aria-invalid={!!errors.endDate}
                   autoComplete="off"
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                  className={`flex-1 px-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                    errors.endDate ? "border-red-400" : "border-cream-dark"
+                  }`}
                 />
               </div>
+              {(errors.startDate || errors.endDate) && (
+                <p className="text-[11px] text-red-500 mt-1.5">
+                  {errors.startDate ?? errors.endDate}
+                </p>
+              )}
             </div>
 
             {/* Intensity */}
@@ -1152,9 +1252,12 @@ export function PlanningScreen() {
                   value={originCity}
                   onChange={(e) => setOriginCity(e.target.value)}
                   aria-label="Departure city"
+                  aria-invalid={!!errors.origin}
                   autoComplete="off"
                   placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-cream-dark bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40"
+                  className={`w-full pl-9 pr-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
+                    errors.origin ? "border-red-400" : "border-cream-dark"
+                  }`}
                 />
                 {locationPermission !== "denied" && !originCity && (
                   <button
@@ -1169,6 +1272,9 @@ export function PlanningScreen() {
                   </button>
                 )}
               </div>
+              {errors.origin && (
+                <p className="text-[11px] text-red-500 mt-1.5">{errors.origin}</p>
+              )}
             </div>
 
             {/* Special requests */}
@@ -1216,6 +1322,7 @@ export function PlanningScreen() {
             <Button
               variant="primary"
               className="w-full"
+              disabled={loading || !isValid}
               onClick={() => {
                 setShowAdjustSheet(false);
                 handleSubmit();
