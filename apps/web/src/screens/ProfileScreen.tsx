@@ -6,6 +6,7 @@ import { ScreenLoader } from "../components/ui/Spinner";
 import { useLocationStore } from "../stores/locationStore";
 import { requestLocation, stopPolling } from "../services/location";
 import { useAuthContext } from "../components/auth/AuthProvider";
+import { useAuth } from "../hooks/useAuth";
 import { useProfileStore } from "../stores/profileStore";
 import type { Profile, TravelProfile } from "../stores/profileStore";
 import { useProfile } from "../hooks/useProfile";
@@ -27,7 +28,8 @@ function readTravel() { return useProfileStore.getState().travelProfile; }
 
 export function ProfileScreen() {
   const { permission, lat, lng, quietMode, toggleQuietMode, setAlertFrequency } = useLocationStore();
-  const { user, signOut } = useAuthContext();
+  const { user } = useAuthContext();
+  const { signOut } = useAuth();
   const { loading } = useProfile();
   const profile = useProfileStore((s) => s.profile);
   const travelProfile = useProfileStore((s) => s.travelProfile);

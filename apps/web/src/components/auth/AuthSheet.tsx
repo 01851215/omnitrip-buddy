@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuthContext } from "./AuthProvider";
+import { useAuth } from "../../hooks/useAuth";
 import { Button } from "../ui/Button";
 import { seedSupabaseData } from "../../services/seedSupabase";
 import { supabase } from "../../services/supabase";
@@ -35,7 +35,7 @@ export function AuthSheet({ initialMode, onClose }: AuthSheetProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp } = useAuthContext();
+  const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async () => {

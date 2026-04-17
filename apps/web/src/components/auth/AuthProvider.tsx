@@ -1,18 +1,10 @@
-import { createContext, useContext, useEffect, type ReactNode } from "react";
-import { supabase } from "../../services/supabase";
+import { useEffect, type ReactNode } from "react";
+import { supabase } from "@omnitrip/shared/services/supabase";
+import { AuthContext } from "@omnitrip/shared/auth/context";
 import { useAuth } from "../../hooks/useAuth";
-import type { User, Session } from "@supabase/supabase-js";
 
-interface AuthContextValue {
-  user: User | null;
-  session: Session | null;
-  loading: boolean;
-  signUp: (email: string, password: string, displayName: string) => Promise<any>;
-  signIn: (email: string, password: string) => Promise<any>;
-  signOut: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+// Re-export useAuthContext from shared so web components that import it here still work
+export { useAuthContext } from "@omnitrip/shared/auth/context";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
@@ -35,10 +27,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
-}
-
-export function useAuthContext() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuthContext must be used within AuthProvider");
-  return ctx;
 }

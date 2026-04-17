@@ -6,7 +6,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "strict": true,
-    "noUncheckedIndexedAccess": true
+    "strict": true
   }
 }
