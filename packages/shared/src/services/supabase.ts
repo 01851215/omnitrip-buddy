@@ -15,8 +15,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getStorageAdapter } from "../platform/storage";
 
 let _client: SupabaseClient | null = null;
+let _url = "";
+
+export function getSupabaseUrl(): string { return _url; }
 
 export function initSupabase(url: string, anonKey: string): void {
+  _url = url ?? "";
   if (!url || !anonKey) {
     console.warn("initSupabase: missing url or anonKey — Supabase will not work.");
   }
@@ -45,7 +49,14 @@ function getClient(): SupabaseClient {
  * Proxy so callers can keep writing `supabase.from(...)` without changes.
  */
 export const supabase = new Proxy({} as SupabaseClient, {
-  get(_target, prop: string) {
+  get(_target, prop: string | symbol) {
+    // React (Fast Refresh / DevTools) checks $$typeof to test if an object is a React
+    // element or component.  Returning undefined here is correct (supabase is neither)
+    // and avoids triggering the "accessed before initSupabase" warning before setup.ts
+    // has had a chance to run.
+    if (prop === "$$typeof" || typeof prop === "symbol") {
+      return _client ? (_client as any)[prop] : undefined;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (getClient() as any)[prop];
   },

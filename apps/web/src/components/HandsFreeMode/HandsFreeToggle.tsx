@@ -9,7 +9,8 @@ import { useBuddyStore } from "../../stores/buddyStore";
 import { Buddy } from "../Buddy";
 import { requestMicPermission, startListening, stopListening } from "../../services/speech";
 import { speak } from "../../services/tts";
-import { callChatGPT } from "../../services/chatgpt";
+import { callClaudeWithTools } from "../../services/chatgpt";
+import { buddyTools } from "@omnitrip/shared/services/buddyTools";
 import { fetchNearbyPOIs } from "../../services/poi";
 import { reverseGeocode } from "../../services/location";
 import {
@@ -75,9 +76,9 @@ export function HandsFreeToggle({ history }: HandsFreeToggleProps) {
 
     const ctx = getPersonalityContext(history ?? null);
     const systemPrompt = buildSystemPrompt(ctx);
-    const response = await callChatGPT(systemPrompt, text, 250);
+    const { text: responseText, toolCalls } = await callClaudeWithTools(systemPrompt, text, buddyTools, 250);
 
-    if (!response) {
+    if (!responseText && !toolCalls?.length) {
       const fallback = "Sorry, I couldn't process that. Try again!";
       setBuddyResponse(fallback);
       setVoiceState("speaking");
@@ -90,12 +91,12 @@ export function HandsFreeToggle({ history }: HandsFreeToggleProps) {
       return;
     }
 
-    const { text: responseText, action } = extractAction(response);
-    setBuddyResponse(responseText);
+    const { text: spokenText, action } = extractAction(responseText ?? "", toolCalls);
+    setBuddyResponse(spokenText);
     setVoiceState("speaking");
     setMood("excited");
 
-    await speak(responseText);
+    await speak(spokenText);
 
     // Handle action — may navigate away
     if (action) {

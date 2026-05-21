@@ -1,5 +1,8 @@
 import { templates, type Template } from "../data/templates";
 import { callChatGPT } from "./chatgpt";
+import { callClaude } from "./anthropic";
+import { findFirstFreeWindow, type BusyRange } from "../utils/schedule";
+import { supabase, getSupabaseUrl } from "./supabase";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -27,6 +30,8 @@ export interface RouteSuggestion {
     destinations: GeneratedDestination[];
     totalBudget: number;
     duration: number;
+    /** Transport mode for each leg: transitModes[i] = how to travel from destinations[i] to destinations[i+1] */
+    transitModes?: string[];
   };
 }
 
@@ -102,6 +107,66 @@ function unsplashImage(name: string): string {
   return FALLBACK_TRAVEL_IMAGE;
 }
 
+// ── RAG retrieval ──────────────────────────────────────
+
+interface RAGResult {
+  content_type: string;
+  content_id: string;
+  content: string;
+  metadata: Record<string, unknown>;
+  similarity: number;
+}
+
+/**
+ * Query the rag-retrieve edge function for semantically similar templates and
+ * user history. Returns matched Template objects (deduplicated, ranked by similarity).
+ * Falls back to an empty array on any failure so the caller can gracefully degrade.
+ */
+async function ragRetrieveTemplates(
+  query: string,
+  tpls: Template[],
+): Promise<Template[]> {
+  const supabaseUrl = getSupabaseUrl();
+  if (!supabaseUrl) return [];
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return [];
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/rag-retrieve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        query,
+        content_types: ["template"],
+        k: 5,
+        threshold: 0.3,
+      }),
+    });
+
+    if (!res.ok) return [];
+
+    const data = await res.json() as { results?: RAGResult[] };
+    const results = data.results ?? [];
+
+    // Map content_ids back to actual Template objects (preserves local data freshness)
+    const seenIds = new Set<string>();
+    const matched: Template[] = [];
+    for (const r of results) {
+      if (seenIds.has(r.content_id)) continue;
+      seenIds.add(r.content_id);
+      const tpl = tpls.find((t) => t.id === r.content_id);
+      if (tpl) matched.push(tpl);
+    }
+    return matched;
+  } catch {
+    return [];
+  }
+}
+
 // ── Helpers ────────────────────────────────────────────
 
 function matchTemplates(query: string, tpls: Template[]): Template[] {
@@ -155,7 +220,10 @@ export async function generateTripSuggestions(
   tpls: Template[] = templates,
   constraints?: PlanningConstraints,
 ): Promise<TripSuggestionResult> {
-  const matched = matchTemplates(query, tpls);
+  // RAG retrieval — semantically ranked templates from pgvector
+  // Falls back to keyword matching if the edge function is unavailable or user is not authed
+  const ragMatched = await ragRetrieveTemplates(query, tpls);
+  const matched = ragMatched.length > 0 ? ragMatched : matchTemplates(query, tpls);
 
   // Build context from matching templates (as inspiration, not constraint)
   const templateContext = matched
@@ -229,7 +297,8 @@ Return a JSON object (no markdown fences) with:
       ],
       "totalBudget": 2500,
       "duration": 7,
-      "templateId": "template-id-if-matches-exactly OR empty string if custom"
+      "templateId": "template-id-if-matches-exactly OR empty string if custom",
+      "transitModes": ["flight", "train"]
     }
   ],
   "insight": {
@@ -246,7 +315,8 @@ Rules:
 - Duration should match dates if provided, otherwise match the query (e.g., "3 days" = 3)
 - If a template closely matches, you may reference its templateId; otherwise use an empty string
 - If user history shows preferences (e.g. loves food, skips museums), prioritize accordingly
-- Generate 2-3 routes with different styles when possible`;
+- Generate 2-3 routes with different styles when possible
+- For transitModes: provide one mode per leg between consecutive destinations (length = destinations.length - 1). Use: "flight", "bullet_train", "train", "bus", "ferry", "car", or "walk". Choose based on realistic geography and distance.`;
 
   const userMsg = `Query: "${query}"
 
@@ -303,6 +373,9 @@ ${templateContext}`;
               destinations,
               totalBudget,
               duration,
+              transitModes: Array.isArray(r.transitModes)
+                ? r.transitModes.map((m: any) => String(m))
+                : undefined,
             },
           } satisfies RouteSuggestion;
         },
@@ -519,13 +592,93 @@ Return ONLY a JSON array of 5 strings, no explanation, no markdown:
   ];
 }
 
+export interface PopularDestination {
+  id: string;
+  title: string;
+  description: string;
+  country: string;
+  coverImage: string;
+  tags: string[];
+  durationDays: number;
+  startDate: string;
+  endDate: string;
+  budgetTotal: number;
+  budgetPerDay: number;
+  originCity: string;
+}
+
+export async function generatePopularDestinations(opts: {
+  originCity: string;
+  historyContext: string;
+  busyRanges: BusyRange[];
+  count?: number;
+}): Promise<PopularDestination[]> {
+  const { originCity, historyContext, busyRanges, count = 4 } = opts;
+  const month = new Date().toLocaleString("en", { month: "long" });
+
+  const systemPrompt = `You are OmniBuddy, an AI travel planner. Generate exactly ${count} popular destination ideas tailored to this traveller.
+
+Context:
+- Based in: ${originCity || "unknown"}
+- Current month: ${month} (factor climate/seasonality)
+- Travel history: ${historyContext || "none"}
+
+Return ONLY JSON (no markdown):
+[{
+  "title": "Catchy title, 2-5 words",
+  "country": "Country name",
+  "description": "1-2 sentences",
+  "tags": ["tag1","tag2","tag3"],
+  "durationDays": 3,        // integer 2-14, picked for the destination type
+  "budgetTotal": 1200       // whole-trip USD
+}]
+
+Rules: mix weekend breaks, city breaks, 1-week trips, road trips. Reachable from origin. Avoid destinations in recent history.`;
+
+  const raw = await callChatGPT(systemPrompt, `Give me ${count} destinations I'd love right now.`, 1200);
+
+  let parsed: any[] = [];
+  try {
+    const match = raw?.match(/\[[\s\S]*\]/);
+    if (match) parsed = JSON.parse(match[0]);
+  } catch { /* fall through */ }
+
+  if (!parsed || parsed.length === 0) {
+    parsed = templates.slice(0, count).map(t => ({
+      title: t.title, country: t.destinations[0]?.country ?? "",
+      description: t.description, tags: t.tags.slice(0,3),
+      durationDays: t.duration, budgetTotal: t.totalBudget,
+    }));
+  }
+
+  return parsed.map((p: any, i: number) => {
+    const durationDays = Math.max(2, Math.min(14, Number(p.durationDays) || 5));
+    const { startDate, endDate } = findFirstFreeWindow(busyRanges, durationDays);
+    const budgetTotal = Math.round(Number(p.budgetTotal) || durationDays * 150);
+    return {
+      id: `pop-${i}-${String(p.title || "trip").toLowerCase().replace(/\s+/g,"-")}`,
+      title: String(p.title || "Trip"),
+      description: String(p.description || ""),
+      country: String(p.country || ""),
+      coverImage: unsplashImage(String(p.title || p.country || "travel")),
+      tags: Array.isArray(p.tags) ? p.tags.slice(0,3).map(String) : [],
+      durationDays,
+      startDate, endDate,
+      budgetTotal,
+      budgetPerDay: Math.round(budgetTotal / durationDays),
+      originCity,
+    } satisfies PopularDestination;
+  });
+}
+
 export async function generateBuddyResponse(
   message: string,
   context?: string,
 ): Promise<BuddyResponse> {
   const systemPrompt = `You are OmniBuddy, a friendly AI travel companion in the OmniTrip app. Keep answers concise (2-3 sentences max). Be warm, helpful, and knowledgeable about travel.${context ? `\n\nContext: ${context}` : ""}`;
 
-  const response = await callChatGPT(systemPrompt, message);
+  // Claude is used for Buddy chat — better conversational quality and warmth than GPT
+  const response = await callClaude(systemPrompt, message);
 
   if (response) {
     return { text: response };

@@ -5,14 +5,23 @@ import { router } from "./routes";
 import { AuthProvider } from "./components/auth/AuthProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initSupabase } from "@omnitrip/shared/services/supabase";
-import { initOpenAI } from "@omnitrip/shared/services/chatgpt";
 import { initPOI } from "@omnitrip/shared/services/poi";
 import { hydrateSettings } from "@omnitrip/shared/stores/settingsStore";
 import { setOpenUrlImpl } from "@omnitrip/shared/platform/openUrl";
 import { setLocationImpl } from "@omnitrip/shared/platform/location";
 import { setSpeechImpl } from "@omnitrip/shared/platform/speech";
 import { setTtsImpl } from "@omnitrip/shared/platform/tts";
+import { reportWebVitals } from "./services/metrics";
 import "./index.css";
+
+// Preconnect to Supabase so the first API call has zero DNS + TLS cold-start
+const _supabaseOrigin = import.meta.env.VITE_SUPABASE_URL as string;
+if (_supabaseOrigin) {
+  const _pc = document.createElement("link");
+  _pc.rel = "preconnect";
+  _pc.href = new URL(_supabaseOrigin).origin;
+  document.head.appendChild(_pc);
+}
 
 // ── Platform registrations ─────────────────────────────
 // openUrl
@@ -68,11 +77,6 @@ initSupabase(
   import.meta.env.VITE_SUPABASE_ANON_KEY as string,
 );
 
-initOpenAI(
-  import.meta.env.VITE_OPENAI_API_KEY as string,
-  import.meta.env.VITE_OPENAI_MODEL as string | undefined,
-);
-
 initPOI(import.meta.env.VITE_FOURSQUARE_API_KEY as string ?? "");
 
 void hydrateSettings();
@@ -87,3 +91,6 @@ createRoot(document.getElementById("root")!).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+// Report Core Web Vitals to the metrics edge function
+reportWebVitals();

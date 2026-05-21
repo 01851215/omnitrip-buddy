@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -11,9 +11,13 @@ import { templates } from "../data/templates";
 import {
   generateTripSuggestions,
   generateSuggestedPrompts,
+  generatePopularDestinations,
   type RouteSuggestion,
   type PlanningConstraints,
+  type PopularDestination,
 } from "../services/tripAI";
+import { findFirstFreeWindow, type BusyRange } from "@omnitrip/shared/utils/schedule";
+import { useAllTrips } from "../hooks/useTrips";
 import { LeafletMap, type MapMarker } from "../components/map/LeafletMap";
 import { useUserHistory, historyToPromptContext } from "../hooks/useUserHistory";
 import { searchDeals } from "../services/searchApi";
@@ -25,6 +29,7 @@ import { TripBudgetTracker } from "../components/booking/TripBudgetTracker";
 import { useT } from "../i18n/useT";
 import { useLocationStore } from "../stores/locationStore";
 import { requestLocation } from "../services/location";
+import { ItineraryPanel, type ItineraryData, type ItineraryDestGroup } from "../components/planning/ItineraryPanel";
 
 const DEFAULT_PROMPTS = [
   "A quiet weekend in the Swiss Alps",
@@ -105,14 +110,22 @@ export function PlanningScreen() {
 
   const [loading, setLoading] = useState(false);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
+  const [itineraryData, setItineraryData] = useState<Record<string, ItineraryData>>({});
   const [showAdjustSheet, setShowAdjustSheet] = useState(false);
   const [refinements, setRefinements] = useState("");
   const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>(DEFAULT_PROMPTS);
   const [promptsLoading, setPromptsLoading] = useState(false);
+  const [popularDestinations, setPopularDestinations] = useState<PopularDestination[]>([]);
+  const [popularLoading, setPopularLoading] = useState(true);
   const { setMood } = useBuddyStore();
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const { history } = useUserHistory();
+  const { trips: allTrips } = useAllTrips();
+  const busyRanges: BusyRange[] = useMemo(
+    () => allTrips.map((t) => ({ startDate: t.startDate, endDate: t.endDate })).filter((r) => r.startDate && r.endDate),
+    [allTrips],
+  );
 
   // Generate AI-personalised prompts when history + origin are ready
   useEffect(() => {
@@ -124,6 +137,18 @@ export function PlanningScreen() {
   // Re-run when origin city resolves from GPS
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!history, originCity]);
+
+  // Generate AI popular destinations
+  useEffect(() => {
+    setPopularLoading(true);
+    const ctx = history ? historyToPromptContext(history) : "";
+    generatePopularDestinations({
+      originCity, historyContext: ctx, busyRanges, count: 4,
+    })
+      .then(setPopularDestinations)
+      .finally(() => setPopularLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!history, originCity, busyRanges.length]);
 
   const constraintsRef = useRef<PlanningConstraints>({});
   const activeTripId = Object.values(createdTrips)[0];
@@ -228,69 +253,65 @@ export function PlanningScreen() {
     }
   };
 
-  const handleAddToTrip = async (route: RouteSuggestion) => {
+  const formatRange = (s: string, e: string) =>
+    `${new Date(s).toLocaleDateString("en", { month: "short", day: "numeric" })} – ${new Date(e).toLocaleDateString("en", { month: "short", day: "numeric" })}`;
+
+  const handlePopularTap = (d: PopularDestination) => {
+    setCustomBudget(String(d.budgetPerDay));
+    setBudgetStyle(null);
+    if (!originCity.trim()) setOriginCity(d.originCity);
+    setStartDate(d.startDate);
+    setEndDate(d.endDate);
+    queueMicrotask(() => handleSubmit(d.title));
+  };
+
+  const handleSuggestedTap = (prompt: string) => {
+    if (!isValid) {
+      if (!budgetStyle && !customBudget) setBudgetStyle("moderate");
+      if (!originCity.trim() && locationName) setOriginCity(locationName);
+      if (!startDate || !endDate) {
+        const w = findFirstFreeWindow(busyRanges, 7);
+        setStartDate(w.startDate); setEndDate(w.endDate);
+      }
+    }
+    queueMicrotask(() => handleSubmit(prompt));
+  };
+
+  const handleAddToTrip = useCallback(async (route: RouteSuggestion) => {
     if (!user) return;
 
     const tpl = templates.find((t) => t.id === route.templateId);
     const generated = route.generatedData;
-
     if (!tpl && !generated) return;
 
     setAddingTrip(route.id);
 
     try {
-      const tripTitle = route.title;
-      const tripDescription = route.description;
-      const tripCoverImage = route.image;
       const tripDuration = generated?.duration ?? tpl!.duration;
+      const destinations = (generated?.destinations ?? tpl!.destinations).map((d) => ({
+        name: d.name, country: d.country, days: d.days,
+        lat: d.lat, lng: d.lng, timezone: d.timezone, coverImage: d.coverImage,
+        activities: d.activities.map((a) => ({
+          title: a.title, type: a.type, estimatedCost: a.estimatedCost ?? 0,
+        })),
+      }));
 
-      const destinations = generated
-        ? generated.destinations.map((d) => ({
-            name: d.name,
-            country: d.country,
-            days: d.days,
-            lat: d.lat,
-            lng: d.lng,
-            timezone: d.timezone,
-            coverImage: d.coverImage,
-            activities: d.activities.map((a) => ({
-              title: a.title,
-              type: a.type,
-              estimatedCost: a.estimatedCost,
-            })),
-          }))
-        : tpl!.destinations.map((d) => ({
-            name: d.name,
-            country: d.country,
-            days: d.days,
-            lat: d.lat,
-            lng: d.lng,
-            timezone: d.timezone,
-            coverImage: d.coverImage,
-            activities: d.activities.map((a) => ({
-              title: a.title,
-              type: a.type,
-              estimatedCost: a.estimatedCost,
-            })),
-          }));
-
-      // Use constraint dates if provided, otherwise start from today
       const c = constraintsRef.current;
       const tripStart = c.startDate ? new Date(c.startDate) : new Date();
       const tripEnd = new Date(tripStart);
       tripEnd.setDate(tripEnd.getDate() + tripDuration);
 
-      // 1. Create trip (active immediately so it shows on Home)
+      // 1. Create trip shell
       const { data: trip } = await supabase
         .from("trips")
         .insert({
           user_id: user.id,
-          title: tripTitle,
+          title: route.title,
           status: "active" as const,
           start_date: tripStart.toISOString().split("T")[0],
           end_date: tripEnd.toISOString().split("T")[0],
-          cover_image: tripCoverImage,
-          description: tripDescription,
+          cover_image: route.image,
+          description: route.description,
         })
         .select("id")
         .single();
@@ -298,11 +319,12 @@ export function PlanningScreen() {
       if (!trip) throw new Error("Failed to create trip");
       const tripId = trip.id;
 
-      // 2. Create destinations
+      // 2. Create destinations + trip_days; capture IDs for the itinerary panel
       let dayOffset = 0;
-      let firstDestinationId: string | null = null;
+      const destGroups: ItineraryDestGroup[] = [];
 
-      for (const dest of destinations) {
+      for (let di = 0; di < destinations.length; di++) {
+        const dest = destinations[di];
         const arrival = new Date(tripStart);
         arrival.setDate(arrival.getDate() + dayOffset);
         const departure = new Date(arrival);
@@ -312,10 +334,8 @@ export function PlanningScreen() {
           .from("destinations")
           .insert({
             trip_id: tripId,
-            name: dest.name,
-            country: dest.country,
-            lat: dest.lat,
-            lng: dest.lng,
+            name: dest.name, country: dest.country,
+            lat: dest.lat, lng: dest.lng,
             arrival_date: arrival.toISOString().split("T")[0],
             departure_date: departure.toISOString().split("T")[0],
             timezone: dest.timezone,
@@ -324,112 +344,70 @@ export function PlanningScreen() {
           .select("id")
           .single();
 
-        if (!destRow) continue;
-        if (!firstDestinationId) firstDestinationId = destRow.id;
+        if (!destRow) { dayOffset += dest.days; continue; }
         const destId = destRow.id;
 
-        // 3. Create trip_days for this destination
-        const dayRows = [];
-        for (let d = 0; d < dest.days; d++) {
+        // Create trip_days
+        const dayRows = Array.from({ length: dest.days }, (_, d) => {
           const dayDate = new Date(arrival);
           dayDate.setDate(dayDate.getDate() + d);
-          dayRows.push({
+          return {
             trip_id: tripId,
             date: dayDate.toISOString().split("T")[0],
-            buddy_notes: [
-              d === 0
-                ? `Arrive in ${dest.name}. Settle in and explore.`
-                : `Day ${d + 1} in ${dest.name}.`,
-            ],
-            energy_level: d === 0 ? "low" : d === dest.days - 1 ? "low" : "medium",
-          });
-        }
-
-        const { data: insertedDays } = await supabase
-          .from("trip_days")
-          .insert(dayRows)
-          .select("id, date");
-
-        if (!insertedDays) continue;
-
-        // 4. Create sample activities spread across days
-        const dayMap = Object.fromEntries(
-          insertedDays.map((d) => [d.date, d.id]),
-        );
-        const sortedDates = insertedDays
-          .map((d) => d.date)
-          .sort();
-
-        const activityRows = dest.activities.map((act, idx) => {
-          const dateForAct = sortedDates[idx % sortedDates.length];
-          const hour = 8 + (idx % 4) * 3; // spread across 8am, 11am, 2pm, 5pm
-          const startTime = `${dateForAct}T${String(hour).padStart(2, "0")}:00`;
-          const endTime = `${dateForAct}T${String(hour + 2).padStart(2, "0")}:00`;
-
-          return {
-            trip_day_id: dayMap[dateForAct],
-            trip_id: tripId,
-            destination_id: destId,
-            title: act.title,
-            type: act.type,
-            start_time: startTime,
-            end_time: endTime,
-            location_name: dest.name,
-            status: "planned" as const,
-            sort_order: idx,
-            estimated_cost_amount: act.estimatedCost > 0 ? act.estimatedCost : null,
-            buddy_suggested: idx === 0,
+            buddy_notes: [d === 0 ? `Arrive in ${dest.name}.` : `Day ${d + 1} in ${dest.name}.`],
+            energy_level: d === 0 || d === dest.days - 1 ? "low" : "medium",
           };
         });
 
-        if (activityRows.length > 0) {
-          const { error: actErr } = await supabase.from("activities").insert(activityRows);
-          if (actErr) console.error("Failed to insert activities:", actErr);
+        const { data: insertedDays } = await supabase
+          .from("trip_days").insert(dayRows).select("id, date");
 
-          // Sync activities to calendar_events so they appear on CalendarScreen
-          const calendarRows = activityRows.map((a) => ({
-            user_id: user.id,
-            trip_id: tripId,
-            source: "omnitrip" as const,
-            title: a.title,
-            description: `${a.type} in ${dest.name}`,
-            start_time: a.start_time,
-            end_time: a.end_time,
-            type: "travel" as const,
-            conflicts_with: [],
-          }));
-          const { error: calErr } = await supabase.from("calendar_events").insert(calendarRows);
-          if (calErr) console.error("Failed to insert calendar events:", calErr);
-        }
+        const dayMap = Object.fromEntries((insertedDays ?? []).map((d) => [d.date, d.id]));
+        const sortedDates = Object.keys(dayMap).sort();
 
+        // Build itinerary activity slots (not written to DB yet — user picks per-item)
+        const activities = dest.activities.map((act, idx) => {
+          const dateForAct = sortedDates[idx % Math.max(sortedDates.length, 1)];
+          const hour = 8 + (idx % 4) * 3;
+          return {
+            key: `${di}-${idx}`,
+            title: act.title,
+            type: act.type,
+            estimatedCost: act.estimatedCost,
+            startTime: `${dateForAct}T${String(hour).padStart(2, "0")}:00:00`,
+            endTime: `${dateForAct}T${String(hour + 2).padStart(2, "0")}:00:00`,
+            dayDate: dateForAct,
+            destinationName: dest.name,
+            destId,
+            tripDayId: dayMap[dateForAct] ?? "",
+          };
+        });
+
+        destGroups.push({ name: dest.name, country: dest.country, daysCount: dest.days, activities });
         dayOffset += dest.days;
       }
 
-      // Store created trip ID + start date, and generate deals instead of navigating away
+      // 3. Expose itinerary panel data + mark trip created
+      setItineraryData((prev) => ({ ...prev, [route.id]: { tripId, destGroups } }));
       setCreatedTrips((prev) => ({ ...prev, [route.id]: tripId }));
       setTripStartDates((prev) => ({ ...prev, [route.id]: tripStart.toISOString().split("T")[0] }));
 
-      // Fetch live deals from Edge Function (falls back to static)
+      // 4. Kick off deals search in background
       const destInputs = destinations.map((dest, i) => {
         const arrival = new Date(tripStart);
         arrival.setDate(arrival.getDate() + destinations.slice(0, i).reduce((s, d) => s + d.days, 0));
         const departure = new Date(arrival);
         departure.setDate(departure.getDate() + dest.days);
         return {
-          name: dest.name,
-          country: dest.country,
+          name: dest.name, country: dest.country,
           arrivalDate: arrival.toISOString().split("T")[0],
           departureDate: departure.toISOString().split("T")[0],
-          lat: dest.lat,
-          lng: dest.lng,
+          lat: dest.lat, lng: dest.lng,
         };
       });
-
       const budget = customBudget && !isNaN(parseFloat(customBudget))
         ? parseFloat(customBudget)
-        : budgetStyle
-          ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount
-          : undefined;
+        : budgetStyle ? BUDGET_PRESETS.find((p) => p.value === budgetStyle)?.amount : undefined;
       setDealsLoading((prev) => ({ ...prev, [route.id]: true }));
       searchDeals(destInputs, originCity || "My Location", budget).then(({ deals, isLive }) => {
         setRouteDeals((prev) => ({ ...prev, [route.id]: deals }));
@@ -441,7 +419,8 @@ export function PlanningScreen() {
     } finally {
       setAddingTrip(null);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, startDate, budgetStyle, customBudget, originCity]);
 
   // Build map data from the recommended route only (numbered markers + polyline)
   const { mapMarkers, mapPolyline, mapCenter, routeBreadcrumb, gmapsUrl } = useMemo(() => {
@@ -815,7 +794,7 @@ export function PlanningScreen() {
               <button
                 key={p}
                 type="button"
-                onClick={() => handleSubmit(p)}
+                onClick={() => handleSuggestedTap(p)}
                 className="w-full text-left px-4 py-3 rounded-xl bg-surface border border-cream-dark text-sm text-text-secondary hover:bg-cream-dark transition-colors focus-visible:ring-2 focus-visible:ring-primary/50"
               >
                 {p}
@@ -832,34 +811,41 @@ export function PlanningScreen() {
               <span className="text-[10px] text-text-muted">{t.planning.curated}</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {templates.map((tpl) => (
+              {popularLoading
+                ? [1,2,3,4].map((i) => (
+                    <div key={i} className="w-full h-44 rounded-xl bg-cream animate-pulse" />
+                  ))
+                : popularDestinations.map((d) => (
                 <Card
-                  key={tpl.id}
+                  key={d.id}
                   className="!p-0 overflow-hidden"
-                  onClick={() => handleSubmit(tpl.title)}
+                  onClick={() => handlePopularTap(d)}
                 >
                   <div className="relative h-28">
                     <img
-                      src={tpl.coverImage}
-                      alt={tpl.title}
+                      src={d.coverImage}
+                      alt={d.title}
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute bottom-2 left-2 right-2">
                       <p className="text-xs font-semibold text-white leading-tight">
-                        {tpl.title}
+                        {d.title}
                       </p>
-                      <p className="text-[10px] text-white/70 mt-0.5">
-                        {tpl.duration} days &middot; ${tpl.totalBudget.toLocaleString()}
+                      <p className="text-[10px] text-white/80 mt-0.5">
+                        {d.durationDays} days · ${d.budgetTotal.toLocaleString()}
+                      </p>
+                      <p className="text-[9px] text-white/60">
+                        {formatRange(d.startDate, d.endDate)} · from {d.originCity}
                       </p>
                     </div>
                   </div>
                   <div className="px-3 py-2">
                     <p className="text-[11px] text-text-secondary line-clamp-2 leading-relaxed">
-                      {tpl.description}
+                      {d.description}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-1.5">
-                      {tpl.tags.slice(0, 3).map((tag) => (
+                      {d.tags.map((tag) => (
                         <span
                           key={tag}
                           className="text-[9px] bg-cream-dark text-text-muted px-1.5 py-0.5 rounded-full"
@@ -977,6 +963,14 @@ export function PlanningScreen() {
                           </Button>
                         )}
                       </div>
+                      {/* Itinerary panel — shown after trip is added, individual Add to Calendar */}
+                      {itineraryData[route.id] && user && (
+                        <ItineraryPanel
+                          data={itineraryData[route.id]}
+                          userId={user.id}
+                        />
+                      )}
+
                       {/* Deals panel — shown after trip is added */}
                       {(routeDeals[route.id] || dealsLoading[route.id]) && (
                         <DealsPanel
@@ -1333,6 +1327,7 @@ export function PlanningScreen() {
           </div>
         </>
       )}
+
     </div>
   );
 }

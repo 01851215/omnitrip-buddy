@@ -1,32 +1,36 @@
 /**
- * Shared OpenAI ChatGPT wrapper.
+ * OpenAI convenience wrapper — delegates to the LLMProvider abstraction.
+ * API key lives server-side in the llm-proxy edge function.
  *
- * MUST call initOpenAI(apiKey) before any ChatGPT call.
- *   - apps/web/src/main.tsx    → initOpenAI(import.meta.env.VITE_OPENAI_API_KEY, import.meta.env.VITE_OPENAI_MODEL)
- *   - apps/mobile/src/setup.ts → initOpenAI(process.env.EXPO_PUBLIC_OPENAI_API_KEY!, ...)
+ * initOpenAI() is kept for backward compatibility; the key param is ignored.
+ * Prefer importing openAIProvider directly for new code.
  */
 
-let _apiKey: string | undefined;
-let _model = "gpt-5.4-mini";
+import { openAIProvider, anthropicProvider, type ChatMessage } from "./llm";
 
-const FALLBACK_MODELS = ["gpt-5.4", "gpt-4o", "gpt-4o-mini"];
-
-export function initOpenAI(apiKey: string, model?: string): void {
-  _apiKey = apiKey;
-  if (model) _model = model;
-}
+// ── Backward-compat re-exports ────────────────────────────────────────────────
 
 export type ChatRole = "system" | "user" | "assistant";
-export interface ChatMsg { role: ChatRole; content: string }
+export type ChatMsg  = ChatMessage;
+
+/** @deprecated key param is ignored — API key is server-side via llm-proxy. */
+export function initOpenAI(_ignoredKey: string, model?: string): void {
+  if (model) {
+    // Mutate the provider's default model if a custom one is requested
+    (openAIProvider as { defaultModel: string }).defaultModel = model;
+  }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
 
 export async function callChatGPT(
   systemPrompt: string,
   userMessage: string,
   maxTokens = 1024,
 ): Promise<string | null> {
-  return callChatGPTWithHistory(
+  return openAIProvider.chat(
     [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
-    maxTokens,
+    { maxTokens },
   );
 }
 
@@ -34,43 +38,9 @@ export async function callChatGPTWithHistory(
   messages: ChatMsg[],
   maxTokens = 1024,
 ): Promise<string | null> {
-  if (!_apiKey) return null;
-
-  async function tryWithModel(model: string): Promise<string | null> {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${_apiKey}`,
-      },
-      body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
-    });
-    if (!res.ok) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await res.json() as any;
-    return (data.choices?.[0]?.message?.content as string) ?? null;
-  }
-
-  try {
-    const result = await tryWithModel(_model);
-    if (result) return result;
-
-    for (const fallback of FALLBACK_MODELS) {
-      if (fallback === _model) continue;
-      const fbResult = await tryWithModel(fallback);
-      if (fbResult) return fbResult;
-    }
-
-    return null;
-  } catch (err) {
-    console.warn("ChatGPT API call failed:", err);
-    return null;
-  }
+  return openAIProvider.chat(messages, { maxTokens });
 }
 
-/**
- * Generate a contextual POI storytelling narration using ChatGPT.
- */
 export async function generatePOINarration(
   poiName: string,
   poiCategory: string,
@@ -83,6 +53,10 @@ export async function generatePOINarration(
 
   const userMsg = `Nearby place: "${poiName}" (${poiCategory}), ${distance}m away.${userPreferences ? ` User preferences: ${userPreferences}` : ""} Generate a brief, enticing narration.`;
 
-  const response = await callChatGPT(systemPrompt, userMsg, 150);
+  // Claude handles evocative, personality-driven narration better than GPT
+  const response = await anthropicProvider.chat(
+    [{ role: "system", content: systemPrompt }, { role: "user", content: userMsg }],
+    { maxTokens: 150 },
+  );
   return response ?? `Hey! ${poiName} is just ${distance}m away — looks like a great spot worth checking out!`;
 }

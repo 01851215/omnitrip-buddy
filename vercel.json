@@ -1,4 +1,7 @@
 {
+  "buildCommand": "turbo run build --filter=omnitrip-web",
+  "outputDirectory": "apps/web/dist",
+  "installCommand": "npm install",
   "rewrites": [
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ],

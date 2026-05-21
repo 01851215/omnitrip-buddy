@@ -11,8 +11,9 @@ import { QuickActions } from "./QuickActions";
 import { PanelInput } from "./PanelInput";
 import { startListening, stopListening, requestMicPermission } from "../../services/speech";
 import { speak } from "../../services/tts";
-import { callChatGPTWithHistory } from "../../services/chatgpt";
+import { callClaudeHistoryWithTools } from "../../services/chatgpt";
 import type { ChatMsg } from "../../services/chatgpt";
+import { buddyTools } from "@omnitrip/shared/services/buddyTools";
 import {
   buildSystemPrompt,
   extractAction,
@@ -102,10 +103,10 @@ async function getResponse(
   const isDirectionQuery = /\b(direction|route|how.*(get|go)|navigate|way to)\b/i.test(text);
   const maxTokens = isBudgetAnalysis ? 350 : isDirectionQuery ? 400 : 250;
 
-  const response = await callChatGPTWithHistory(messages, maxTokens);
-  if (!response) return { text: getDemoResponse(text), action: null, route: null };
+  const { text: responseText, toolCalls } = await callClaudeHistoryWithTools(messages, buddyTools, maxTokens);
+  if (!responseText && !toolCalls?.length) return { text: getDemoResponse(text), action: null, route: null };
 
-  return extractAction(response);
+  return extractAction(responseText ?? "", toolCalls);
 }
 
 interface BuddyPanelProps {

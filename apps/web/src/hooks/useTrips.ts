@@ -1,185 +1,119 @@
-import { useState, useEffect, useCallback } from "react";
-import { supabase } from "../services/supabase";
-import { useAuthContext } from "../components/auth/AuthProvider";
-import { mapTrip, mapDreamTrip, mapDestination } from "../utils/mapRow";
-import type { Trip, DreamTrip, TripStatus } from "../types";
+/**
+ * Trip hooks for the web app.
+ *
+ * useAllTrips is implemented here using the pg_graphql endpoint for selective
+ * field fetching. pg_graphql preserves snake_case column names (no auto-inflection).
+ * All other hooks delegate to the shared Supabase JS implementation.
+ */
 
-export function useActiveTrip() {
-  const { user } = useAuthContext();
-  const [trip, setTrip] = useState<Trip | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
-  const [version, setVersion] = useState(0);
+// Re-export all hooks except useAllTrips, which we override below
+export {
+  useActiveTrip,
+  useCompletedTrips,
+  useDreamTrips,
+  useDestinations,
+  useAllDestinations,
+  updateTripStatus,
+  type DestinationCoord,
+} from "@omnitrip/shared/hooks/useTrips";
 
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    setLoading(true);
+import { useState, useEffect } from "react";
+import { useAuthContext } from "@omnitrip/shared/auth/context";
+import { getGraphQLClient } from "../services/graphql";
+import type { Trip } from "@omnitrip/shared/types";
 
-    // Prefer active trips, fall back to planning; newest first within each status
-    supabase.from("trips").select("*").eq("user_id", user.id).in("status", ["active", "planning"])
-      .order("status", { ascending: true })
-      .order("created_at", { ascending: false })
-      .limit(1).maybeSingle()
-      .then(({ data }) => { setTrip(data ? mapTrip(data as any) : undefined); setLoading(false); });
-  }, [user, version]);
+// ── GraphQL query ─────────────────────────────────────────────────────────────
 
-  const refresh = useCallback(() => setVersion((v) => v + 1), []);
-
-  // Refresh when tab regains focus so navigating back always shows latest state
-  useEffect(() => {
-    const handler = () => { if (document.visibilityState === "visible") refresh(); };
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
-  }, [refresh]);
-
-  return { trip, loading, refresh };
-}
-
-export function useCompletedTrips() {
-  const { user } = useAuthContext();
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    setLoading(true);
-    supabase.from("trips").select("*").eq("user_id", user.id).eq("status", "completed")
-      .then(({ data }) => { setTrips((data ?? []).map(mapTrip as any)); setLoading(false); });
-  }, [user]);
-
-  return { trips, loading };
-}
-
-export function useAllTrips() {
-  const { user } = useAuthContext();
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    setLoading(true);
-    supabase.from("trips").select("*").eq("user_id", user.id)
-      .then(({ data }) => { setTrips((data ?? []).map(mapTrip as any)); setLoading(false); });
-  }, [user]);
-
-  return { trips, loading };
-}
-
-export function useDreamTrips() {
-  const { user } = useAuthContext();
-  const [trips, setTrips] = useState<DreamTrip[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    setLoading(true);
-    supabase.from("dream_trips").select("*").eq("user_id", user.id)
-      .then(({ data }) => { setTrips((data ?? []).map(mapDreamTrip as any)); setLoading(false); });
-  }, [user, version]);
-
-  const refresh = useCallback(() => setVersion((v) => v + 1), []);
-
-  const createDreamTrip = useCallback(async (title: string, description: string, coverImage?: string): Promise<boolean> => {
-    if (!user) return false;
-    const { error } = await supabase.from("dream_trips").insert({
-      user_id: user.id,
-      title,
-      description,
-      cover_image: coverImage ?? null,
-    });
-    if (!error) refresh();
-    return !error;
-  }, [user, refresh]);
-
-  const deleteDreamTrip = useCallback(async (id: string): Promise<boolean> => {
-    const { error } = await supabase.from("dream_trips").delete().eq("id", id);
-    if (!error) refresh();
-    return !error;
-  }, [refresh]);
-
-  return { trips, loading, refresh, createDreamTrip, deleteDreamTrip };
-}
-
-export function useDestinations(tripId?: string) {
-  const [destinations, setDestinations] = useState<ReturnType<typeof mapDestination>[]>([]);
-
-  useEffect(() => {
-    if (!tripId) { setDestinations([]); return; }
-    supabase.from("destinations").select("*").eq("trip_id", tripId)
-      .then(({ data }) => setDestinations((data ?? []).map(mapDestination as any)));
-  }, [tripId]);
-
-  return destinations;
-}
-
-export interface DestinationCoord {
-  id: string;
-  name: string;
-  country: string;
-  lat: number;
-  lng: number;
-  arrivalDate: string;
-}
-
-export function useAllDestinations() {
-  const { user } = useAuthContext();
-  const [destinations, setDestinations] = useState<DestinationCoord[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    setLoading(true);
-
-    const toCoords = (rows: any[]): DestinationCoord[] =>
-      rows
-        .filter((d: any) => d.lat != null && d.lng != null)
-        .map((d: any) => ({
-          id: d.id,
-          name: d.name ?? "",
-          country: d.country ?? "",
-          lat: d.lat,
-          lng: d.lng,
-          arrivalDate: d.arrival_date ?? "",
-        }));
-
-    (async () => {
-      const { data } = await supabase
-        .from("destinations")
-        .select("id, name, country, lat, lng, arrival_date, trip_id, trips!inner(user_id)")
-        .eq("trips.user_id", user.id)
-        .order("arrival_date", { ascending: true });
-
-      let results = toCoords(data ?? []);
-
-      if (results.length === 0) {
-        const { data: trips } = await supabase
-          .from("trips")
-          .select("id")
-          .eq("user_id", user.id);
-
-        if (trips && trips.length > 0) {
-          const { data: fallbackData } = await supabase
-            .from("destinations")
-            .select("id, name, country, lat, lng, arrival_date")
-            .in("trip_id", trips.map((t) => t.id))
-            .order("arrival_date", { ascending: true });
-
-          results = toCoords(fallbackData ?? []);
+// pg_graphql exposes columns using their original snake_case names.
+// Selective field fetching avoids over-fetching large columns we don't need
+// on the home screen (e.g. full itinerary JSON or attachments).
+const ALL_TRIPS_QUERY = `
+  query AllTrips($userId: UUID!) {
+    tripsCollection(filter: { user_id: { eq: $userId } }) {
+      edges {
+        node {
+          id
+          user_id
+          title
+          status
+          start_date
+          end_date
+          cover_image
+          description
+          created_at
         }
       }
+    }
+  }
+`;
 
-      setDestinations(results);
-      setLoading(false);
-    })();
-  }, [user]);
-
-  return { destinations, loading };
+interface TripNode {
+  id: string;
+  user_id: string;
+  title: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  cover_image: string | null;
+  description: string | null;
+  created_at: string;
 }
 
-export async function updateTripStatus(tripId: string, status: TripStatus): Promise<boolean> {
-  const { error } = await supabase
-    .from("trips")
-    .update({ status })
-    .eq("id", tripId);
-  return !error;
+interface AllTripsResult {
+  tripsCollection: {
+    edges: Array<{ node: TripNode }>;
+  };
+}
+
+function mapTripNode(node: TripNode): Trip {
+  return {
+    id: node.id,
+    userId: node.user_id,
+    title: node.title,
+    status: node.status as Trip["status"],
+    startDate: node.start_date,
+    endDate: node.end_date,
+    coverImage: node.cover_image ?? undefined,
+    description: node.description ?? undefined,
+    createdAt: new Date(node.created_at).getTime(),
+  };
+}
+
+// ── GraphQL-powered hook ──────────────────────────────────────────────────────
+
+/**
+ * Fetches all trips for the current user via Supabase pg_graphql.
+ * Returns the same { trips, loading } shape as the shared hook.
+ */
+export function useAllTrips(): { trips: Trip[]; loading: boolean } {
+  const { user } = useAuthContext();
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    getGraphQLClient()
+      .then((client) =>
+        client.request<AllTripsResult>(ALL_TRIPS_QUERY, { userId: user.id }),
+      )
+      .then((data) => {
+        setTrips(data.tripsCollection.edges.map((e) => mapTripNode(e.node)));
+        setLoading(false);
+      })
+      .catch((err) => {
+        // GraphQL unavailable (local dev without Supabase, network error, etc.)
+        // Log and return empty — shared hook can be used as fallback if needed.
+        console.warn("useAllTrips GraphQL failed:", err);
+        setTrips([]);
+        setLoading(false);
+      });
+  }, [user]);
+
+  return { trips, loading };
 }

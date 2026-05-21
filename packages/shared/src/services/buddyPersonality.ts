@@ -8,6 +8,7 @@
 
 import { historyToPromptContext, type UserHistory } from "../hooks/useUserHistory";
 import type { POI } from "../stores/locationStore";
+import type { ToolCall } from "./llm";
 
 export type BuddyTone = "warm" | "energetic" | "calm";
 
@@ -151,26 +152,19 @@ export function buildSystemPrompt(ctx: PersonalityContext): string {
 
   // Route / directions awareness
   parts.push(
-    `When the user asks for directions or how to get somewhere, you MUST: ` +
+    `When the user asks for directions or how to get somewhere: ` +
     `1. Suggest the best transport mode (walk, cycle, drive, public transport) based on distance and context. ` +
-    `2. Give a brief friendly description of the route mentioning real street names. ` +
-    `3. Include a ROUTE tag at the very end with ONLY the start point and destination (2 waypoints). ` +
-    `The app will automatically calculate the real road-following route. ` +
-    `Format: [ROUTE:label1@lat1,lng1|label2@lat2,lng2] ` +
-    `Use real, accurate GPS coordinates. The first waypoint should be the user's current location (use "You" as label). ` +
-    `Example: [ROUTE:You@51.5527,-0.2985|Neasden Temple@51.5472,-0.2594]`,
+    `2. Give a brief friendly description of the route mentioning real street names or landmarks. ` +
+    `3. Call the navigate_to tool with accurate GPS coordinates — first waypoint is the user's current ` +
+    `location labelled "You", second is the destination. ` +
+    `Only call navigate_to if you have real, accurate coordinates — do not guess coordinates.`,
   );
 
-  // Voice command awareness
+  // Capability summary (tools handle the actual action dispatch)
   parts.push(
     `You can help with: planning trips, finding deals, booking hotels/flights/activities, ` +
     `checking the calendar, logging expenses, exploring nearby places, and giving personalized ` +
-    `recommendations. When the user asks to perform an action, respond with a brief confirmation ` +
-    `and include the action keyword in brackets at the END of your response, like: ` +
-    `[ACTION:plan_trip], [ACTION:show_calendar], [ACTION:find_hotels], [ACTION:find_restaurants], ` +
-    `[ACTION:find_activities], [ACTION:check_budget], [ACTION:show_deals], [ACTION:go_home], ` +
-    `[ACTION:open_profile], [ACTION:show_journeys], [ACTION:find_flights], [ACTION:find_trains], ` +
-    `[ACTION:nearby_food], [ACTION:nearby_things], [ACTION:hidden_gems].`,
+    `recommendations. Use the available tools to trigger in-app actions when the user asks for them.`,
   );
 
   return parts.join("\n\n");
@@ -207,18 +201,45 @@ export interface RouteWaypoint {
 }
 
 /**
- * Extract action intent and route data from ChatGPT response (bracketed at the end).
+ * Extract action intent and route data from an LLM response.
+ *
+ * Prefers structured tool calls (toolCalls param) when present — this is the
+ * native tool-calling path. Falls back to regex-parsing [ACTION:] and [ROUTE:]
+ * tags for backward compatibility with older sessions or models without tool support.
  */
-export function extractAction(response: string): {
+export function extractAction(
+  response: string,
+  toolCalls?: ToolCall[],
+): {
   text: string;
   action: string | null;
   route: RouteWaypoint[] | null;
 } {
+  // ── Path 1: native tool calls (preferred) ────────────────────────────────
+  if (toolCalls?.length) {
+    const tc = toolCalls[0];
+
+    if (tc.name === "navigate_to") {
+      const raw = tc.arguments.waypoints as Array<{ label: string; lat: unknown; lng: unknown }> | undefined;
+      const waypoints: RouteWaypoint[] = (raw ?? [])
+        .map((w) => ({ label: w.label, lat: Number(w.lat), lng: Number(w.lng) }))
+        .filter((w) => !isNaN(w.lat) && !isNaN(w.lng));
+      return {
+        text: response,
+        action: null,
+        route: waypoints.length >= 2 ? waypoints : null,
+      };
+    }
+
+    // All other tools are action intents — no route
+    return { text: response, action: tc.name, route: null };
+  }
+
+  // ── Path 2: regex fallback (legacy [ACTION:] / [ROUTE:] tags) ────────────
   let cleaned = response;
   let route: RouteWaypoint[] | null = null;
   let action: string | null = null;
 
-  // Extract route data
   const routeMatch = cleaned.match(/\[ROUTE:([^\]]+)\]/);
   if (routeMatch) {
     cleaned = cleaned.replace(/\s*\[ROUTE:[^\]]+\]\s*/, "").trim();
@@ -232,7 +253,6 @@ export function extractAction(response: string): {
     if (route.length < 2) route = null;
   }
 
-  // Extract action
   const actionMatch = cleaned.match(/\[ACTION:(\w+)\]\s*$/);
   if (actionMatch) {
     cleaned = cleaned.replace(/\s*\[ACTION:\w+\]\s*$/, "").trim();

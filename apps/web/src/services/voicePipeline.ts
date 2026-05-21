@@ -2,7 +2,8 @@
 
 import { startListening, stopListening, requestMicPermission } from "./speech";
 import { speak, stop as stopTTS } from "./tts";
-import { callChatGPT } from "./chatgpt";
+import { callClaudeWithTools } from "./chatgpt";
+import { buddyTools } from "@omnitrip/shared/services/buddyTools";
 import { useVoiceStore } from "../stores/voiceStore";
 import { useBuddyStore } from "../stores/buddyStore";
 import { useLocationStore } from "../stores/locationStore";
@@ -67,10 +68,11 @@ async function getChatGPTResponse(
   const ctx = getPersonalityContext(history);
   const systemPrompt = buildSystemPrompt(ctx);
 
-  const response = await callChatGPT(systemPrompt, transcript, 250);
-  if (!response) return { text: getDemoResponse(transcript), action: null };
+  const { text: responseText, toolCalls } = await callClaudeWithTools(systemPrompt, transcript, buddyTools, 250);
+  if (!responseText && !toolCalls?.length) return { text: getDemoResponse(transcript), action: null };
 
-  return extractAction(response);
+  const { text, action } = extractAction(responseText ?? "", toolCalls);
+  return { text, action };
 }
 
 /** Navigation callback — set by the component that starts the session */
