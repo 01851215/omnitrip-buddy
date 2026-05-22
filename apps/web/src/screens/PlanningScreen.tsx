@@ -30,6 +30,7 @@ import { useT } from "../i18n/useT";
 import { useLocationStore } from "../stores/locationStore";
 import { requestLocation } from "../services/location";
 import { ItineraryPanel, type ItineraryData, type ItineraryDestGroup } from "../components/planning/ItineraryPanel";
+import { DestinationAutocomplete } from "../components/planning/DestinationAutocomplete";
 
 const DEFAULT_PROMPTS = [
   "A quiet weekend in the Swiss Alps",
@@ -480,15 +481,13 @@ export function PlanningScreen() {
       <div className="px-5">
         <Card className="!p-3">
           <div className="flex items-center gap-2">
-            <input
-              type="text"
+            <DestinationAutocomplete
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              onChange={setQuery}
+              onSubmit={handleSubmit}
               placeholder={t.planning.searchPlaceholder}
-              aria-label="Search destinations"
-              autoComplete="off"
-              className="flex-1 bg-transparent text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 placeholder:text-text-muted"
+              disabled={loading}
+              isValid={isValid}
             />
             <button
               type="button"
