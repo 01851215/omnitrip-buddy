@@ -478,8 +478,8 @@ export function PlanningScreen() {
       {user && <WalletCard userId={user.id} />}
 
       {/* Chat Input */}
-      <div className="px-5">
-        <Card className="!p-3">
+      <div className="px-5 relative overflow-visible">
+        <Card className="!p-3 overflow-visible">
           <div className="flex items-center gap-2">
             <DestinationAutocomplete
               value={query}

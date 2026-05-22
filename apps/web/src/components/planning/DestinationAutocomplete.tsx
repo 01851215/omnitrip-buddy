@@ -131,10 +131,10 @@ export function DestinationAutocomplete({
           ref={listRef}
           role="listbox"
           aria-label="Destination suggestions"
-          className="absolute left-0 right-0 top-full mt-2 z-50 rounded-xl border border-border bg-surface shadow-xl overflow-hidden max-h-72 overflow-y-auto"
+          className="absolute left-0 right-0 top-full mt-2 z-[200] rounded-xl border border-cream-dark bg-surface shadow-xl overflow-y-auto max-h-72"
         >
           {/* RAG badge header */}
-          <li className="px-3 py-1.5 flex items-center gap-1.5 border-b border-border/50">
+          <li className="px-3 py-1.5 flex items-center gap-1.5 border-b border-cream-dark/60">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
               {user ? "AI Suggestions" : "Suggestions"}
             </span>
@@ -160,7 +160,7 @@ export function DestinationAutocomplete({
                 px-3 py-2.5 cursor-pointer transition-colors
                 ${idx === activeIdx
                   ? "bg-primary/10 text-primary"
-                  : "hover:bg-surface-hover text-text-primary"
+                  : "hover:bg-cream text-text-secondary"
                 }
               `}
             >
@@ -175,7 +175,7 @@ export function DestinationAutocomplete({
                       {s.destinations.slice(0, 4).map((d) => (
                         <span
                           key={d}
-                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-hover text-text-secondary font-medium"
+                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-cream text-text-secondary font-medium"
                         >
                           {d}
                         </span>
