@@ -31,6 +31,7 @@ import { useLocationStore } from "../stores/locationStore";
 import { requestLocation } from "../services/location";
 import { ItineraryPanel, type ItineraryData, type ItineraryDestGroup } from "../components/planning/ItineraryPanel";
 import { DestinationAutocomplete } from "../components/planning/DestinationAutocomplete";
+import { CityAutocomplete } from "../components/planning/CityAutocomplete";
 
 const DEFAULT_PROMPTS = [
   "A quiet weekend in the Swiss Alps",
@@ -95,19 +96,22 @@ export function PlanningScreen() {
 
   const { locationName, permission: locationPermission } = useLocationStore();
 
-  // Auto-fill origin from GPS on first load
+  // Auto-fill origin from GPS on first load (kicks off the async request)
   useEffect(() => {
-    if (originCity) return; // already set by user
-    if (locationName) {
-      setOriginCity(locationName);
-    } else if (locationPermission !== "denied") {
-      requestLocation().then(() => {
-        const name = useLocationStore.getState().locationName;
-        if (name) setOriginCity(name);
-      });
+    if (originCity) return;
+    if (locationPermission !== "denied") {
+      requestLocation(); // fire-and-forget; result handled by locationName watcher below
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reactive fill: whenever reverse-geocode resolves and sets locationName, fill origin
+  useEffect(() => {
+    if (!originCity && locationName) {
+      setOriginCity(locationName);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationName]);
 
   const [loading, setLoading] = useState(false);
   const [addingTrip, setAddingTrip] = useState<string | null>(null);
@@ -664,37 +668,18 @@ export function PlanningScreen() {
             </div>
 
             {/* Flying from */}
-            <div>
+            <div className="relative overflow-visible">
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
                 Flying from
               </p>
-              <div className="relative flex items-center">
-                <span className="absolute left-3 text-sm">✈️</span>
-                <input
-                  type="text"
-                  value={originCity}
-                  onChange={(e) => setOriginCity(e.target.value)}
-                  aria-label="Departure city"
-                  aria-invalid={!!errors.origin}
-                  autoComplete="off"
-                  placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
-                  className={`w-full pl-9 pr-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
-                    errors.origin ? "border-red-400" : "border-cream-dark"
-                  }`}
-                />
-                {locationPermission !== "denied" && !originCity && (
-                  <button
-                    type="button"
-                    onClick={() => requestLocation().then(() => {
-                      const name = useLocationStore.getState().locationName;
-                      if (name) setOriginCity(name);
-                    })}
-                    className="absolute right-2 text-[10px] text-primary font-medium"
-                  >
-                    Use GPS
-                  </button>
-                )}
-              </div>
+              <CityAutocomplete
+                value={originCity}
+                onChange={setOriginCity}
+                placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
+                hasError={!!errors.origin}
+                icon="✈️"
+                ariaLabel="Departure city"
+              />
               {errors.origin && (
                 <p className="text-[11px] text-red-500 mt-1.5">{errors.origin}</p>
               )}
@@ -1234,37 +1219,18 @@ export function PlanningScreen() {
             </div>
 
             {/* Flying from */}
-            <div>
+            <div className="relative overflow-visible">
               <p className="text-[10px] uppercase tracking-wider text-text-muted font-medium mb-2">
                 Flying from
               </p>
-              <div className="relative flex items-center">
-                <span className="absolute left-3 text-sm">✈️</span>
-                <input
-                  type="text"
-                  value={originCity}
-                  onChange={(e) => setOriginCity(e.target.value)}
-                  aria-label="Departure city"
-                  aria-invalid={!!errors.origin}
-                  autoComplete="off"
-                  placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
-                  className={`w-full pl-9 pr-3 py-1.5 rounded-lg border bg-surface text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus:border-primary/40 ${
-                    errors.origin ? "border-red-400" : "border-cream-dark"
-                  }`}
-                />
-                {locationPermission !== "denied" && !originCity && (
-                  <button
-                    type="button"
-                    onClick={() => requestLocation().then(() => {
-                      const name = useLocationStore.getState().locationName;
-                      if (name) setOriginCity(name);
-                    })}
-                    className="absolute right-2 text-[10px] text-primary font-medium"
-                  >
-                    Use GPS
-                  </button>
-                )}
-              </div>
+              <CityAutocomplete
+                value={originCity}
+                onChange={setOriginCity}
+                placeholder={locationPermission === "denied" ? "Enter your city" : "Detecting your location…"}
+                hasError={!!errors.origin}
+                icon="✈️"
+                ariaLabel="Departure city"
+              />
               {errors.origin && (
                 <p className="text-[11px] text-red-500 mt-1.5">{errors.origin}</p>
               )}

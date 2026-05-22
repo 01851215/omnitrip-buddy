@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { templates } from "../data/templates";
+import { searchCities } from "../data/worldCities";
 import { supabase, getSupabaseUrl } from "@omnitrip/shared/services/supabase";
 import { useAuthContext } from "../components/auth/AuthProvider";
 
@@ -24,27 +25,32 @@ export interface DestinationSuggestion {
 }
 
 const DEBOUNCE_MS = 350;
-const MIN_CHARS = 2;
-const MAX_SUGGESTIONS = 6;
+const MIN_CHARS   = 1;   // single letter shows results immediately
+const MAX_SUGGESTIONS = 7;
 
-/** Fast local search over templates by title, destination names, and tags. */
+/** Fast local search over templates (prefix-first) + world cities. */
 function searchLocal(query: string): DestinationSuggestion[] {
   const q = query.toLowerCase().trim();
   if (!q) return [];
 
-  return templates
+  // 1. Template search — starts-with scores higher than contains
+  const templateResults = templates
     .map((t) => {
-      const titleHit    = t.title.toLowerCase().includes(q) ? 3 : 0;
-      const destHit     = t.destinations.some((d) =>
-        d.name.toLowerCase().includes(q) || d.country.toLowerCase().includes(q)
-      ) ? 2 : 0;
-      const tagHit      = t.tags.some((tag) => tag.toLowerCase().includes(q)) ? 1 : 0;
-      const score = titleHit + destHit + tagHit;
+      const titleLower = t.title.toLowerCase();
+      const titleScore = titleLower.startsWith(q) ? 5 : titleLower.includes(q) ? 3 : 0;
+      const destScore  = t.destinations.some((d) => {
+        const n = d.name.toLowerCase();
+        const c = d.country.toLowerCase();
+        return n.startsWith(q) || c.startsWith(q) ? 4 : n.includes(q) || c.includes(q) ? 2 : false;
+      }) ? (t.destinations.some((d) => d.name.toLowerCase().startsWith(q) || d.country.toLowerCase().startsWith(q)) ? 4 : 2) : 0;
+      const tagScore  = t.tags.some((tag) => tag.toLowerCase().startsWith(q)) ? 2
+                       : t.tags.some((tag) => tag.toLowerCase().includes(q)) ? 1 : 0;
+      const score = titleScore + destScore + tagScore;
       return { t, score };
     })
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_SUGGESTIONS)
+    .slice(0, 3)
     .map(({ t }) => ({
       id: t.id,
       title: t.title,
@@ -52,6 +58,24 @@ function searchLocal(query: string): DestinationSuggestion[] {
       tags: t.tags,
       source: "local" as const,
     }));
+
+  // 2. World city search — fills remaining slots with matching cities
+  //    Skip cities already covered by a template result
+  const coveredNames = new Set(
+    templateResults.flatMap((s) => [s.title.toLowerCase(), ...s.destinations.map((d) => d.toLowerCase())])
+  );
+  const cityResults = searchCities(q, MAX_SUGGESTIONS)
+    .filter((c) => !coveredNames.has(c.name.toLowerCase()))
+    .slice(0, MAX_SUGGESTIONS - templateResults.length)
+    .map((c) => ({
+      id: `city-${c.name.toLowerCase().replace(/\s+/g, "-")}`,
+      title: c.name,
+      destinations: [c.country],
+      tags: [c.region],
+      source: "local" as const,
+    }));
+
+  return [...templateResults, ...cityResults].slice(0, MAX_SUGGESTIONS);
 }
 
 /** Call rag-retrieve edge function with the user's JWT. */
